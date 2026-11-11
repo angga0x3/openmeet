@@ -20,6 +20,8 @@ export type Prefs = {
   theme: ThemeMode;
   accent: string;
   personalRoom: string;
+  /** Opaque key that scopes rows in the server-side schedule table. */
+  scheduleKey: string;
   notifications: {
     reminders: boolean;
     chat: boolean;
@@ -34,19 +36,30 @@ export function loadPrefs(): Prefs {
     theme: "dark",
     accent: "indigo",
     personalRoom: "",
+    scheduleKey: newKey(),
     notifications: { reminders: true, chat: true, weekly: false },
   };
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return fallback;
     const parsed = JSON.parse(raw) as Partial<Prefs>;
-    return {
+    const merged = {
       ...fallback,
       ...parsed,
       notifications: { ...fallback.notifications, ...(parsed.notifications ?? {}) },
     };
+    if (!merged.scheduleKey) merged.scheduleKey = newKey();
+    return merged;
   } catch {
     return fallback;
+  }
+}
+
+function newKey(): string {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return `k-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
   }
 }
 

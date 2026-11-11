@@ -7,6 +7,7 @@ import { ACCENTS, type Prefs, type ThemeMode } from "../lib/theme";
 import { Avatar, colorFor } from "./Avatar";
 import { Icon, type IconName } from "./Icon";
 import { useDevices } from "../lib/useDevices";
+import { Select } from "./Select";
 
 export type Page = "home" | "meetings" | "recordings" | "settings";
 
@@ -26,6 +27,7 @@ type Props = {
   onJoinCode: () => void;
   onSchedule: () => void;
   onStartScheduled: (entry: ScheduleEntry) => void;
+  onDeleteScheduled: (id: string) => void;
   onJoinRoom: (room: string, passcode?: string) => void;
   onStartPersonal: () => void;
   onOpenShortcuts: () => void;
@@ -87,6 +89,7 @@ export function Dashboard(props: Props) {
     onJoinCode,
     onSchedule,
     onStartScheduled,
+    onDeleteScheduled,
     onJoinRoom,
     onStartPersonal,
     onOpenShortcuts,
@@ -275,6 +278,7 @@ export function Dashboard(props: Props) {
             onJoinCode={onJoinCode}
             onSchedule={onSchedule}
             onStartScheduled={onStartScheduled}
+            onDeleteScheduled={onDeleteScheduled}
             onJoinRoom={onJoinRoom}
             onCopy={onCopy}
             onPage={go}
@@ -287,6 +291,7 @@ export function Dashboard(props: Props) {
             history={history}
             onJoinRoom={onJoinRoom}
             onStartScheduled={onStartScheduled}
+            onDeleteScheduled={onDeleteScheduled}
             onSchedule={onSchedule}
             onJoinCode={onJoinCode}
             onCopy={onCopy}
@@ -376,6 +381,7 @@ function HomePage({
   onJoinCode,
   onSchedule,
   onStartScheduled,
+  onDeleteScheduled,
   onJoinRoom,
   onCopy,
   onPage,
@@ -391,6 +397,7 @@ function HomePage({
   onJoinCode: () => void;
   onSchedule: () => void;
   onStartScheduled: (entry: ScheduleEntry) => void;
+  onDeleteScheduled: (id: string) => void;
   onJoinRoom: (room: string) => void;
   onCopy: (text: string, message?: string) => void;
   onPage: (page: Page) => void;
@@ -512,6 +519,7 @@ function HomePage({
                 now={now}
                 onStart={() => onStartScheduled(entry)}
                 onJoin={() => onJoinRoom(entry.room)}
+                onDelete={() => onDeleteScheduled(entry.id)}
                 onCopy={() => onCopy(`openmeet.app/${entry.room}`, "Room code copied")}
               />
             ))}
@@ -580,12 +588,14 @@ function ScheduleRow({
   now,
   onStart,
   onJoin,
+  onDelete,
   onCopy,
 }: {
   entry: ScheduleEntry;
   now: number;
   onStart: () => void;
   onJoin: () => void;
+  onDelete: () => void;
   onCopy: () => void;
 }) {
   const minutes = Math.round((entry.start - now) / 60000);
@@ -605,6 +615,9 @@ function ScheduleRow({
         </div>
       </div>
       <div className="mact">
+        <button className="icon-btn delete-btn" onClick={onDelete} title="Cancel meeting">
+          <Icon name="x" size={14} />
+        </button>
         {live ? (
           <span className="live-badge">
             <i />
@@ -678,6 +691,7 @@ function MeetingsPage({
   history,
   onJoinRoom,
   onStartScheduled,
+  onDeleteScheduled,
   onSchedule,
   onJoinCode,
   onCopy,
@@ -687,6 +701,7 @@ function MeetingsPage({
   history: HistoryEntry[];
   onJoinRoom: (room: string) => void;
   onStartScheduled: (entry: ScheduleEntry) => void;
+  onDeleteScheduled: (id: string) => void;
   onSchedule: () => void;
   onJoinCode: () => void;
   onCopy: (text: string) => void;
@@ -765,6 +780,7 @@ function MeetingsPage({
                   now={now}
                   onStart={() => onStartScheduled(entry)}
                   onJoin={() => onJoinRoom(entry.room)}
+                  onDelete={() => onDeleteScheduled(entry.id)}
                   onCopy={() => onCopy(entry.room)}
                 />
               ))}
@@ -920,54 +936,48 @@ function SettingsPage({
                     <b>Camera</b>
                     <div className="sub">Video source for new meetings</div>
                   </div>
-                  <select
-                    className="input select-input"
+                  <Select
+                    className="settings-select"
+                    icon="video"
                     value={settings.cameraId}
-                    onChange={(event) => onSettings({ cameraId: event.target.value })}
-                  >
-                    <option value="">System default</option>
-                    {devices.cams.map((device) => (
-                      <option key={device.id} value={device.id}>
-                        {device.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(cameraId) => onSettings({ cameraId })}
+                    options={[
+                      { value: "", label: "System default", icon: "video" },
+                      ...devices.cams.map((device) => ({ value: device.id, label: device.label, icon: "video" as const })),
+                    ]}
+                  />
                 </div>
                 <div className="srow">
                   <div>
                     <b>Microphone</b>
                     <div className="sub">Input device for meetings</div>
                   </div>
-                  <select
-                    className="input select-input"
+                  <Select
+                    className="settings-select"
+                    icon="mic"
                     value={settings.micId}
-                    onChange={(event) => onSettings({ micId: event.target.value })}
-                  >
-                    <option value="">System default</option>
-                    {devices.mics.map((device) => (
-                      <option key={device.id} value={device.id}>
-                        {device.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(micId) => onSettings({ micId })}
+                    options={[
+                      { value: "", label: "System default", icon: "mic" },
+                      ...devices.mics.map((device) => ({ value: device.id, label: device.label, icon: "mic" as const })),
+                    ]}
+                  />
                 </div>
                 <div className="srow">
                   <div>
                     <b>Speaker</b>
                     <div className="sub">Output device for meeting audio</div>
                   </div>
-                  <select
-                    className="input select-input"
+                  <Select
+                    className="settings-select"
+                    icon="volume-2"
                     value={settings.speakerId}
-                    onChange={(event) => onSettings({ speakerId: event.target.value })}
-                  >
-                    <option value="">System default</option>
-                    {devices.speakers.map((device) => (
-                      <option key={device.id} value={device.id}>
-                        {device.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(speakerId) => onSettings({ speakerId })}
+                    options={[
+                      { value: "", label: "System default", icon: "volume-2" },
+                      ...devices.speakers.map((device) => ({ value: device.id, label: device.label, icon: "volume-2" as const })),
+                    ]}
+                  />
                 </div>
               </div>
               <div className="card">

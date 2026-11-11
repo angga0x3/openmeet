@@ -13,7 +13,16 @@ import {
   onTrayAction,
   saveSettings,
 } from "./lib/platform";
-import { loadSchedule, nextColor, roomCode, saveSchedule, type ScheduleEntry } from "./lib/schedule";
+import {
+  createRemoteSchedule,
+  deleteRemoteSchedule,
+  fetchRemoteSchedule,
+  loadSchedule,
+  nextColor,
+  roomCode,
+  saveSchedule,
+  type ScheduleEntry,
+} from "./lib/schedule";
 import { applyTheme, loadPrefs, savePrefs, slugify, type Prefs } from "./lib/theme";
 import type { HistoryEntry, Settings } from "./types";
 
@@ -32,6 +41,7 @@ export default function App() {
   const [route, setRoute] = useState<Route>({ name: "dash" });
   const [page, setPage] = useState<Page>("home");
   const [online, setOnline] = useState<boolean | null>(null);
+  const [scheduleEnabled, setScheduleEnabled] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [joinModal, setJoinModal] = useState(false);
   const [scheduleModal, setScheduleModal] = useState(false);
@@ -60,6 +70,24 @@ export default function App() {
   }, [prefs.theme, prefs.accent]);
 
   useEffect(() => {
+    if (!scheduleEnabled) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const remote = await fetchRemoteSchedule(settings.serverUrl, prefs.scheduleKey);
+        if (cancelled) return;
+        setSchedule(remote);
+        saveSchedule(remote);
+      } catch {
+        // Keep the cached schedule when the server has no database.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [settings.serverUrl, prefs.scheduleKey, scheduleEnabled]);
+
+  useEffect(() => {
     let cancelled = false;
     async function check() {
       try {
@@ -71,7 +99,14 @@ export default function App() {
         const timer = setTimeout(() => controller.abort(), 4000);
         const response = await fetch(`${base}/healthz`, { signal: controller.signal });
         clearTimeout(timer);
-        if (!cancelled) setOnline(response.ok);
+        if (cancelled) return;
+        setOnline(response.ok);
+        if (response.ok) {
+          const body = (await response.json().catch(() => null)) as { schedule?: boolean } | null;
+          setScheduleEnabled(Boolean(body?.schedule));
+        } else {
+          setScheduleEnabled(false);
+        }
       } catch {
         if (!cancelled) setOnline(false);
       }
@@ -204,25 +239,64 @@ export default function App() {
   );
 
   const saveScheduled = useCallback(
-    (input: { title: string; start: number; duration: number }) => {
-      const entry: ScheduleEntry = {
-        id: crypto.randomUUID(),
-        title: input.title,
-        start: input.start,
-        duration: input.duration,
-        room: roomCode(),
-        color: nextColor(schedule),
-      };
+    async (input: { title: string; start: number; duration: number }) => {
+      const color = nextColor(schedule);
+      setScheduleModal(false);
+      if (!scheduleEnabled) {
+        saveLocal(input, color);
+        return;
+      }
+      try {
+        const entry = await createRemoteSchedule(settingsRef.current.serverUrl, prefs.scheduleKey, {
+          ...input,
+          color,
+        });
+        setSchedule((current) => {
+          const next = [...current, entry];
+          saveSchedule(next);
+          return next;
+        });
+        push(`"${entry.title}" scheduled`, "check");
+        void copy(`openmeet.app/${entry.room}`, "Room code copied");
+      } catch {
+        saveLocal(input, color);
+      }
+
+      function saveLocal(
+        value: { title: string; start: number; duration: number },
+        entryColor: string,
+      ) {
+        const entry: ScheduleEntry = {
+          id: crypto.randomUUID(),
+          title: value.title,
+          start: value.start,
+          duration: value.duration,
+          room: roomCode(),
+          color: entryColor,
+        };
+        setSchedule((current) => {
+          const next = [...current, entry];
+          saveSchedule(next);
+          return next;
+        });
+        push("Saved on this device; the server schedule is unavailable", "info");
+      }
+    },
+    [copy, prefs.scheduleKey, push, schedule, scheduleEnabled],
+  );
+
+  const deleteScheduled = useCallback(
+    (id: string) => {
       setSchedule((current) => {
-        const next = [...current, entry];
+        const next = current.filter((entry) => entry.id !== id);
         saveSchedule(next);
         return next;
       });
-      setScheduleModal(false);
-      push(`"${entry.title}" scheduled`, "check");
-      void copy(`openmeet.app/${entry.room}`, "Room code copied");
+      if (scheduleEnabled) {
+        void deleteRemoteSchedule(settingsRef.current.serverUrl, prefs.scheduleKey, id).catch(() => {});
+      }
     },
-    [copy, push, schedule],
+    [prefs.scheduleKey, scheduleEnabled],
   );
 
   const onJoinFromView = useCallback(
@@ -325,6 +399,7 @@ export default function App() {
           onJoinCode={() => setJoinModal(true)}
           onSchedule={() => setScheduleModal(true)}
           onStartScheduled={(entry) => void startScheduled(entry)}
+          onDeleteScheduled={deleteScheduled}
           onJoinRoom={(room) => setRoute({ name: "join", room })}
           onStartPersonal={() => void startPersonal()}
           onOpenShortcuts={() => setShortcuts(true)}
@@ -346,7 +421,11 @@ export default function App() {
         }}
       />
 
-      <ScheduleModal open={scheduleModal} onClose={() => setScheduleModal(false)} onSave={saveScheduled} />
+      <ScheduleModal
+        open={scheduleModal}
+        onClose={() => setScheduleModal(false)}
+        onSave={(entry) => void saveScheduled(entry)}
+      />
       <ShortcutsModal open={shortcuts} onClose={() => setShortcuts(false)} />
 
       <LeaveModal

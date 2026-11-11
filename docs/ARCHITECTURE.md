@@ -112,6 +112,7 @@ native path. This is a legal constraint, not a technical preference.
 |---|---|---|
 | UI settings (name, devices, server URL) | `settings.json` in app config dir | file permissions (0600) |
 | Meeting history | SQLite `history.db` (rusqlite, bundled) | file permissions; no tokens stored |
+| Scheduled rooms | PostgreSQL (Neon), `openmeet_schedule` | rows scoped by an opaque per-profile key; no PII |
 | Room passcodes | signaling server memory only | SHA-256 hash, never logged |
 | Media | never persisted | — |
 

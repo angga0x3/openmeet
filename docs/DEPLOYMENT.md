@@ -33,6 +33,7 @@ After=network-online.target
 [Service]
 User=openmeet
 Group=openmeet
+EnvironmentFile=-/etc/openmeet/openmeet.env
 Environment=OPENMEET_BIND=127.0.0.1:8770
 Environment=OPENMEET_WEB_DIR=/opt/openmeet/web
 Environment=OPENMEET_MAX_PARTICIPANTS=8
@@ -107,7 +108,51 @@ ingress:
 Cloudflare proxies WebSockets without extra configuration. Keep the heartbeat enabled; it
 is what prevents idle WebSocket collection on the edge.
 
-## 2. TURN (NAT traversal)
+## 2. Scheduling database (Neon Postgres)
+
+Scheduling is optional. Without a database the client stores the schedule in the browser and
+the API returns `503`; rooms still work.
+
+Create a Neon project, copy the **pooled** connection string, and put it in
+`/etc/openmeet/openmeet.env`:
+
+```bash
+sudo install -d -m 0750 /etc/openmeet
+sudo tee /etc/openmeet/openmeet.env >/dev/null <<'EOF'
+DATABASE_URL=postgresql://openmeet:password@ep-xxx-pooler.eu-central-1.aws.neon.tech/openmeet?sslmode=require
+EOF
+sudo chmod 0600 /etc/openmeet/openmeet.env
+sudo systemctl restart openmeet-signaling
+```
+
+The service creates this table on startup:
+
+```sql
+CREATE TABLE openmeet_schedule (
+  id TEXT PRIMARY KEY,
+  owner TEXT NOT NULL,
+  title TEXT NOT NULL,
+  start_ms BIGINT NOT NULL,
+  duration_min INTEGER NOT NULL,
+  room TEXT NOT NULL,
+  color TEXT NOT NULL,
+  created_ms BIGINT NOT NULL
+);
+```
+
+Rows are scoped by an opaque `x-openmeet-key` header generated per browser profile, so a
+shared deployment does not leak one user's schedule to another. The key is a bearer secret:
+anyone who has it can read and delete that schedule.
+
+Neon notes:
+
+- Use the pooled endpoint (`-pooler`) for serverless-friendly connection handling.
+- Keep `sslmode=require`; `disable` will be rejected by Neon.
+- The binary connects lazily at startup and logs `schedule database connected`. If the
+  database is unreachable, the API degrades to `503` and clients fall back to local storage.
+- Check `GET /healthz`; it reports `"schedule": true|false`.
+
+## 3. TURN (NAT traversal)
 
 Most home networks need a relay for at least some participants. coturn is free and packaged
 everywhere.
@@ -137,7 +182,7 @@ The signaling server mints short-lived TURN credentials (username = expiry, cred
 base64 HMAC-SHA1 of the secret). Nothing long-lived is shipped to clients, and the secret
 never leaves the server.
 
-## 3. Desktop distribution
+## 4. Desktop distribution
 
 ```bash
 cd apps/desktop
@@ -156,14 +201,14 @@ Set the signaling address before distributing, either by editing the default in
 For managed fleets, pre-seed `settings.json` in the app config directory
 (`~/.config/com.openmeet.desktop/settings.json` on Linux).
 
-## 4. Capacity
+## 5. Capacity
 
 The server keeps rooms in memory and forwards JSON messages. Each participant sends SDP/ICE
 only at join and on renegotiation; chat is rate limited per peer. A single core handles
 thousands of idle rooms. The real limit is mesh bandwidth on the clients: plan for ≤ 6
 participants per room until the SFU transport lands (see `docs/ARCHITECTURE.md`).
 
-## 5. Operations
+## 6. Operations
 
 - Health: `curl -fsS https://meet.example/healthz`
 - Logs: structured `tracing` output on stdout; set `RUST_LOG=debug` while diagnosing.

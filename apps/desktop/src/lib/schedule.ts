@@ -51,3 +51,49 @@ export function upcoming(entries: ScheduleEntry[], now = Date.now()): ScheduleEn
 export function nextColor(entries: ScheduleEntry[]): string {
   return SCHEDULE_COLORS[entries.length % SCHEDULE_COLORS.length];
 }
+
+function httpBase(serverUrl: string): string {
+  return serverUrl
+    .trim()
+    .replace(/\/+$/, "")
+    .replace(/^ws(s?):\/\//i, "http$1://");
+}
+
+export async function fetchRemoteSchedule(
+  serverUrl: string,
+  key: string,
+): Promise<ScheduleEntry[]> {
+  const response = await fetch(`${httpBase(serverUrl)}/api/schedule`, {
+    headers: { "x-openmeet-key": key },
+  });
+  if (!response.ok) throw new Error(`schedule ${response.status}`);
+  return (await response.json()) as ScheduleEntry[];
+}
+
+export async function createRemoteSchedule(
+  serverUrl: string,
+  key: string,
+  input: { title: string; start: number; duration: number; color: string },
+): Promise<ScheduleEntry> {
+  const response = await fetch(`${httpBase(serverUrl)}/api/schedule`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-openmeet-key": key },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(body?.message ?? `schedule ${response.status}`);
+  }
+  return (await response.json()) as ScheduleEntry;
+}
+
+export async function deleteRemoteSchedule(
+  serverUrl: string,
+  key: string,
+  id: string,
+): Promise<void> {
+  await fetch(`${httpBase(serverUrl)}/api/schedule/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { "x-openmeet-key": key },
+  });
+}

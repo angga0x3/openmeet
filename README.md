@@ -13,7 +13,8 @@ Try it: <https://openmeet.garox.my.id> (browser, no install) or build the deskto
 
 - Dashboard: upcoming rooms, recent history, personal room, per-week stats, dark/light theme
   and five accent colors
-- Local scheduling: pick a time, get a pre-created room code, share the link (no email invites)
+- Scheduling: pick a time, get a pre-created room code, share the link. Stored in Neon
+  Postgres when `DATABASE_URL` is set, otherwise locally in the browser (no email invites)
 - Pre-join check: camera preview, mic level meter, device pickers, passcode field
 - Room: gallery and speaker layouts, pin, active-speaker outline, mute/camera state,
   screen sharing, chat, participant list, reactions, host can end the meeting

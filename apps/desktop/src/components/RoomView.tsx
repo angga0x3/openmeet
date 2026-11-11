@@ -4,6 +4,7 @@ import type { Settings } from "../types";
 import type { ScheduleEntry } from "../lib/schedule";
 import { useDevices } from "../lib/useDevices";
 import { Avatar, AvatarArt, colorFor } from "./Avatar";
+import { Select } from "./Select";
 import { Icon, type IconName } from "./Icon";
 
 type Props = {
@@ -340,25 +341,27 @@ export function JoinView({
           <div className="dev-grid">
             <div className="field">
               <label className="label">Microphone</label>
-              <select className="input select-input" value={micId} onChange={(event) => setMicId(event.target.value)}>
-                <option value="">System default</option>
-                {devices.mics.map((device) => (
-                  <option key={device.id} value={device.id}>
-                    {device.label}
-                  </option>
-                ))}
-              </select>
+              <Select
+                icon="mic"
+                value={micId}
+                onChange={setMicId}
+                options={[
+                  { value: "", label: "System default", icon: "mic" },
+                  ...devices.mics.map((device) => ({ value: device.id, label: device.label, icon: "mic" as const })),
+                ]}
+              />
             </div>
             <div className="field">
               <label className="label">Camera</label>
-              <select className="input select-input" value={cameraId} onChange={(event) => setCameraId(event.target.value)}>
-                <option value="">System default</option>
-                {devices.cams.map((device) => (
-                  <option key={device.id} value={device.id}>
-                    {device.label}
-                  </option>
-                ))}
-              </select>
+              <Select
+                icon="video"
+                value={cameraId}
+                onChange={setCameraId}
+                options={[
+                  { value: "", label: "System default", icon: "video" },
+                  ...devices.cams.map((device) => ({ value: device.id, label: device.label, icon: "video" as const })),
+                ]}
+              />
             </div>
           </div>
 
@@ -410,6 +413,8 @@ export function RoomView({ meeting, room, title, schedule, onExit, onCopy, pushT
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [unread, setUnread] = useState(0);
   const [now, setNow] = useState(Date.now());
+  const [audioId, setAudioId] = useState("");
+  const [videoId, setVideoId] = useState("");
 
   const gridRef = useRef<HTMLDivElement | null>(null);
   const chatRef = useRef<HTMLDivElement | null>(null);
@@ -677,12 +682,18 @@ export function RoomView({ meeting, room, title, schedule, onExit, onCopy, pushT
               {deviceMenu === "mic" && (
                 <div className="popover device-pop">
                   <div className="pop-label">Microphone</div>
-                  <button className="pop-row" onClick={() => { void meeting.switchDevice("audio", ""); setDeviceMenu(null); }}>
-                    <Icon name="mic" size={15} /> System default
-                  </button>
-                  {devices.mics.map((device) => (
-                    <button key={device.id} className="pop-row" onClick={() => { void meeting.switchDevice("audio", device.id); setDeviceMenu(null); }}>
-                      <Icon name="mic" size={15} /> {device.label}
+                  {[{ id: "", label: "System default" }, ...devices.mics].map((device) => (
+                    <button
+                      key={device.id || "default"}
+                      className={`pop-row ${audioId === device.id ? "selected" : ""}`}
+                      onClick={() => {
+                        setAudioId(device.id);
+                        void meeting.switchDevice("audio", device.id);
+                        setDeviceMenu(null);
+                      }}
+                    >
+                      <Icon name="mic" size={15} /> <span className="grow">{device.label}</span>
+                      {audioId === device.id && <Icon name="check" size={15} className="check" />}
                     </button>
                   ))}
                 </div>
@@ -702,12 +713,18 @@ export function RoomView({ meeting, room, title, schedule, onExit, onCopy, pushT
               {deviceMenu === "cam" && (
                 <div className="popover device-pop">
                   <div className="pop-label">Camera</div>
-                  <button className="pop-row" onClick={() => { void meeting.switchDevice("video", ""); setDeviceMenu(null); }}>
-                    <Icon name="video" size={15} /> System default
-                  </button>
-                  {devices.cams.map((device) => (
-                    <button key={device.id} className="pop-row" onClick={() => { void meeting.switchDevice("video", device.id); setDeviceMenu(null); }}>
-                      <Icon name="video" size={15} /> {device.label}
+                  {[{ id: "", label: "System default" }, ...devices.cams].map((device) => (
+                    <button
+                      key={device.id || "default"}
+                      className={`pop-row ${videoId === device.id ? "selected" : ""}`}
+                      onClick={() => {
+                        setVideoId(device.id);
+                        void meeting.switchDevice("video", device.id);
+                        setDeviceMenu(null);
+                      }}
+                    >
+                      <Icon name="video" size={15} /> <span className="grow">{device.label}</span>
+                      {videoId === device.id && <Icon name="check" size={15} className="check" />}
                     </button>
                   ))}
                 </div>

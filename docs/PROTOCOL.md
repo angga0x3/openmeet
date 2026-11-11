@@ -64,6 +64,14 @@ Error codes: `bad_request`, `bad_message`, `already_joined`, `room_not_found`, `
 | GET | `/api/config` | ICE servers (ephemeral TURN credentials are minted per request) and max participants |
 | POST | `/api/rooms` | `{"passcode":"optional"}` → `201 {"room_id":"...","has_passcode":false}` |
 | GET | `/api/rooms/{id}` | `{"room_id","participants","max_participants","has_passcode"}` or `404` |
+| GET | `/api/schedule` | Scheduled rooms for the caller (requires `x-openmeet-key`) |
+| POST | `/api/schedule` | `{"title","start","duration","color"}` → `201` entry (requires the key) |
+| DELETE | `/api/schedule/{id}` | `204`, `404`, or `503` when no database is configured |
+
+Scheduling is backed by PostgreSQL (Neon in the reference deployment). The client sends an
+opaque `x-openmeet-key` header (8–128 characters, generated per browser profile). Rows are
+scoped to that key; there are no accounts. If `DATABASE_URL` is not configured the endpoints
+return `503` and the client keeps the schedule locally.
 
 Room creation is unauthenticated by design: rooms are ephemeral, hold no media, and are
 reachable only by their 12-character code. Deployments that need invite control should put

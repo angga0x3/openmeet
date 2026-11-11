@@ -4,6 +4,7 @@ use openmeet_signaling::{
     http::router,
     protocol::IceServer,
     room::{Config, Hub, TurnConfig},
+    schedule::ScheduleStore,
 };
 use tracing_subscriber::EnvFilter;
 
@@ -77,7 +78,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         room_idle,
     };
 
-    let hub = Arc::new(Hub::new(cfg));
+    let schedule = match std::env::var("DATABASE_URL") {
+        Ok(url) if !url.trim().is_empty() => match ScheduleStore::connect(url.trim()).await {
+            Ok(store) => {
+                tracing::info!("schedule database connected");
+                Some(Arc::new(store))
+            }
+            Err(error) => {
+                tracing::error!(%error, "schedule database unavailable; scheduling API disabled");
+                None
+            }
+        },
+        _ => {
+            tracing::warn!("DATABASE_URL is not set; scheduling API disabled");
+            None
+        }
+    };
+
+    let hub = Arc::new(Hub::new(cfg, schedule));
 
     let web_dir = std::env::var("OPENMEET_WEB_DIR")
         .ok()

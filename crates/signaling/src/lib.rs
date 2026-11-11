@@ -5,6 +5,7 @@
 pub mod http;
 pub mod protocol;
 pub mod room;
+pub mod schedule;
 
 pub use http::{router, AppState};
 pub use room::{Config, Hub};

@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    sync::Mutex,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
@@ -12,6 +12,7 @@ use sha2::{Digest, Sha256};
 use tokio::sync::mpsc;
 
 use crate::protocol::{IceServer, Peer, ServerMsg};
+use crate::schedule::{ScheduleEntry, ScheduleStore};
 
 pub const MAX_NAME_LEN: usize = 64;
 pub const MAX_PASSCODE_LEN: usize = 64;
@@ -49,6 +50,9 @@ impl Default for Config {
         }
     }
 }
+
+const SCHEDULE_COLORS: [&str; 6] = ["#6366f1", "#0ea5e9", "#ec4899", "#f59e0b", "#10b981", "#8b5cf6"];
+const SCHEDULE_ALPHABET: &[u8] = b"abcdefghijkmnopqrstuvwxyz23456789";
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum JoinError {
@@ -176,13 +180,15 @@ struct Room {
 
 pub struct Hub {
     inner: Mutex<HashMap<String, Room>>,
+    schedule: Option<Arc<ScheduleStore>>,
     cfg: Config,
 }
 
 impl Hub {
-    pub fn new(cfg: Config) -> Self {
+    pub fn new(cfg: Config, schedule: Option<Arc<ScheduleStore>>) -> Self {
         Self {
             inner: Mutex::new(HashMap::new()),
+            schedule,
             cfg,
         }
     }
@@ -340,6 +346,83 @@ impl Hub {
             room.empty_since = Some(Instant::now());
         }
         (empty, was_host)
+    }
+
+    pub async fn list_schedule(&self, owner: &str) -> Result<Vec<ScheduleEntry>, String> {
+        let store = self.require_schedule()?;
+        store.list(owner).await.map_err(|error| error.to_string())
+    }
+
+    pub async fn add_schedule(
+        &self,
+        owner: &str,
+        title: &str,
+        start: i64,
+        duration: i64,
+        color: Option<&str>,
+    ) -> Result<ScheduleEntry, String> {
+        let title = sanitize_text(title, 120);
+        if title.is_empty() {
+            return Err("A title is required.".into());
+        }
+        let now = unix_millis() as i64;
+        if start < now - 86_400_000 || start > now + 5 * 365 * 86_400_000 {
+            return Err("That start time is out of range.".into());
+        }
+        if !(5..=480).contains(&duration) {
+            return Err("Duration must be between 5 and 480 minutes.".into());
+        }
+
+        let store = self.require_schedule()?;
+        let color = color
+            .filter(|value| SCHEDULE_COLORS.contains(value))
+            .unwrap_or_else(|| SCHEDULE_COLORS[title.len() % SCHEDULE_COLORS.len()])
+            .to_string();
+
+        let room = self.reserve_room_code()?;
+        let entry = ScheduleEntry {
+            id: uuid::Uuid::new_v4().to_string(),
+            title,
+            start,
+            duration,
+            room,
+            color,
+        };
+        store
+            .create(owner, &entry)
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(entry)
+    }
+
+    pub async fn delete_schedule(&self, owner: &str, id: &str) -> Result<bool, String> {
+        let store = self.require_schedule()?;
+        store
+            .delete(owner, id)
+            .await
+            .map_err(|error| error.to_string())
+    }
+
+    pub fn schedule_configured(&self) -> bool {
+        self.schedule.is_some()
+    }
+
+    fn require_schedule(&self) -> Result<&Arc<ScheduleStore>, String> {
+        self.schedule
+            .as_ref()
+            .ok_or_else(|| "The scheduling database is not configured.".to_string())
+    }
+
+    fn reserve_room_code(&self) -> Result<String, String> {
+        for _ in 0..8 {
+            let code = random_room_code();
+            match self.create_room_with_id(&code, None) {
+                Ok(()) => return Ok(code),
+                Err(CreateRoomError::Exists) => continue,
+                Err(CreateRoomError::InvalidId) => return Err("Could not allocate a room code.".into()),
+            }
+        }
+        Err("Could not allocate a room code.".into())
     }
 
     pub fn peer(&self, room_id: &str, peer_id: &str) -> Option<Peer> {
@@ -518,6 +601,16 @@ fn unix_seconds() -> u64 {
         .unwrap_or(0)
 }
 
+fn random_room_code() -> String {
+    let mut rng = rand::thread_rng();
+    let mut part = |len: usize| -> String {
+        (0..len)
+            .map(|_| SCHEDULE_ALPHABET[rng.gen_range(0..SCHEDULE_ALPHABET.len())] as char)
+            .collect()
+    };
+    format!("{}-{}-{}", part(3), part(4), part(3))
+}
+
 fn unix_millis() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -530,10 +623,13 @@ mod tests {
     use super::*;
 
     fn hub() -> Hub {
-        Hub::new(Config {
-            max_participants: 3,
-            ..Config::default()
-        })
+        Hub::new(
+            Config {
+                max_participants: 3,
+                ..Config::default()
+            },
+            None,
+        )
     }
 
     fn channel() -> mpsc::UnboundedReceiver<ServerMsg> {
@@ -638,10 +734,13 @@ mod tests {
 
     #[test]
     fn empty_rooms_are_swept() {
-        let hub = Hub::new(Config {
-            room_idle: Duration::from_millis(1),
-            ..Config::default()
-        });
+        let hub = Hub::new(
+            Config {
+                room_idle: Duration::from_millis(1),
+                ..Config::default()
+            },
+            None,
+        );
         let room = hub.create_room(None);
         std::thread::sleep(Duration::from_millis(5));
         assert_eq!(hub.sweep(), 1);
@@ -661,6 +760,27 @@ mod tests {
         assert!(was_host);
     }
 
+    #[tokio::test]
+    async fn schedule_validation_rejects_bad_input() {
+        let hub = hub();
+        let start = unix_millis() as i64 + 3_600_000;
+        assert!(hub.add_schedule("o", "", start, 30, None).await.is_err());
+        assert!(hub.add_schedule("o", "x", start, 1, None).await.is_err());
+        assert!(hub.add_schedule("o", "x", start, 999, None).await.is_err());
+        assert!(hub.add_schedule("o", "x", 0, 30, None).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn schedule_requires_a_database() {
+        let hub = hub();
+        let start = unix_millis() as i64 + 3_600_000;
+        assert!(hub
+            .add_schedule("o", "Design review", start, 30, None)
+            .await
+            .unwrap_err()
+            .contains("not configured"));
+    }
+
     #[test]
     fn turn_credential_matches_rfc2202_vector() {
         let credential = turn_credential("Jefe", "what do ya want for nothing?");
@@ -670,14 +790,17 @@ mod tests {
 
     #[test]
     fn ice_servers_include_ephemeral_turn_credentials() {
-        let hub = Hub::new(Config {
-            turn: Some(TurnConfig {
-                urls: vec!["turn:turn.example:3478".into()],
-                secret: "shared-secret".into(),
-                ttl: Duration::from_secs(3600),
-            }),
-            ..Config::default()
-        });
+        let hub = Hub::new(
+            Config {
+                turn: Some(TurnConfig {
+                    urls: vec!["turn:turn.example:3478".into()],
+                    secret: "shared-secret".into(),
+                    ttl: Duration::from_secs(3600),
+                }),
+                ..Config::default()
+            },
+            None,
+        );
 
         let servers = hub.ice_servers();
         assert_eq!(servers.len(), 2);

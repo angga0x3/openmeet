@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon, type IconName } from "./Icon";
+import { Select } from "./Select";
 
 export function Modal({
   open,
@@ -211,18 +212,15 @@ export function ScheduleModal({
       </div>
       <div className="field">
         <label className="label">Duration</label>
-        <div className="seg">
-          {DURATIONS.map((value) => (
-            <button
-              key={value}
-              className={duration === value ? "active" : ""}
-              onClick={() => setDuration(value)}
-              type="button"
-            >
-              {value < 60 ? `${value} min` : `${value / 60} h`}
-            </button>
-          ))}
-        </div>
+        <Select
+          icon="clock"
+          value={String(duration)}
+          onChange={(value) => setDuration(Number(value))}
+          options={DURATIONS.map((value) => ({
+            value: String(value),
+            label: value < 60 ? `${value} minutes` : `${value / 60} hour`,
+          }))}
+        />
       </div>
       <p className="hint">
         Invites are not sent by the server. Copy the room link after scheduling and share it

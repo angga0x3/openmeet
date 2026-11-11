@@ -5,9 +5,9 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         Path, State,
     },
-    http::{header, HeaderValue, StatusCode},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use futures_util::{SinkExt, Stream, StreamExt};
@@ -37,6 +37,8 @@ pub fn router(hub: AppState, web_dir: Option<PathBuf>) -> Router {
         .route("/api/config", get(config))
         .route("/api/rooms", post(create_room))
         .route("/api/rooms/{id}", get(room_info))
+        .route("/api/schedule", get(schedule_list).post(schedule_create))
+        .route("/api/schedule/{id}", delete(schedule_delete))
         .route("/ws", get(ws_handler));
 
     if let Some(dir) = web_dir {
@@ -65,8 +67,11 @@ pub fn router(hub: AppState, web_dir: Option<PathBuf>) -> Router {
         .with_state(hub)
 }
 
-async fn healthz() -> impl IntoResponse {
-    Json(serde_json::json!({ "ok": true }))
+async fn healthz(State(hub): State<AppState>) -> impl IntoResponse {
+    Json(serde_json::json!({
+        "ok": true,
+        "schedule": hub.schedule_configured(),
+    }))
 }
 
 #[derive(Serialize)]
@@ -156,6 +161,101 @@ async fn create_room(
         }),
     )
         .into_response()
+}
+
+const SCHEDULE_KEY: &str = "x-openmeet-key";
+
+fn schedule_owner(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get(SCHEDULE_KEY)
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| (8..=128).contains(&value.len()))
+        .map(ToOwned::to_owned)
+}
+
+async fn schedule_list(State(hub): State<AppState>, headers: HeaderMap) -> Response {
+    let Some(owner) = schedule_owner(&headers) else {
+        return api_error(
+            StatusCode::UNAUTHORIZED,
+            "missing_schedule_key",
+            "A schedule key is required.",
+        );
+    };
+    if !hub.schedule_configured() {
+        return api_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "schedule_unavailable",
+            "Scheduling is not configured on this server.",
+        );
+    }
+    match hub.list_schedule(&owner).await {
+        Ok(entries) => Json(entries).into_response(),
+        Err(error) => api_error(StatusCode::INTERNAL_SERVER_ERROR, "schedule_failed", error),
+    }
+}
+
+#[derive(Deserialize)]
+struct CreateScheduleReq {
+    title: String,
+    start: i64,
+    duration: i64,
+    #[serde(default)]
+    color: Option<String>,
+}
+
+async fn schedule_create(
+    State(hub): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<CreateScheduleReq>,
+) -> Response {
+    let Some(owner) = schedule_owner(&headers) else {
+        return api_error(
+            StatusCode::UNAUTHORIZED,
+            "missing_schedule_key",
+            "A schedule key is required.",
+        );
+    };
+    if !hub.schedule_configured() {
+        return api_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "schedule_unavailable",
+            "Scheduling is not configured on this server.",
+        );
+    }
+    match hub
+        .add_schedule(&owner, &req.title, req.start, req.duration, req.color.as_deref())
+        .await
+    {
+        Ok(entry) => (StatusCode::CREATED, Json(entry)).into_response(),
+        Err(message) => api_error(StatusCode::BAD_REQUEST, "invalid_schedule", message),
+    }
+}
+
+async fn schedule_delete(
+    State(hub): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    let Some(owner) = schedule_owner(&headers) else {
+        return api_error(
+            StatusCode::UNAUTHORIZED,
+            "missing_schedule_key",
+            "A schedule key is required.",
+        );
+    };
+    if !hub.schedule_configured() {
+        return api_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "schedule_unavailable",
+            "Scheduling is not configured on this server.",
+        );
+    }
+    match hub.delete_schedule(&owner, &id).await {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => api_error(StatusCode::NOT_FOUND, "not_found", "Meeting not found."),
+        Err(error) => api_error(StatusCode::INTERNAL_SERVER_ERROR, "schedule_failed", error),
+    }
 }
 
 #[derive(Serialize)]
@@ -397,10 +497,13 @@ mod tests {
     use tokio_tungstenite::tungstenite::Message as WsMessage;
 
     async fn spawn_server() -> (Arc<Hub>, std::net::SocketAddr) {
-        let hub = Arc::new(Hub::new(Config {
-            max_participants: 4,
-            ..Config::default()
-        }));
+        let hub = Arc::new(Hub::new(
+            Config {
+                max_participants: 4,
+                ..Config::default()
+            },
+            None,
+        ));
         let app = router(hub.clone(), None);
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -509,7 +612,7 @@ mod tests {
         use http_body_util::BodyExt;
         use tower::ServiceExt;
 
-        let hub = Arc::new(Hub::new(Config::default()));
+        let hub = Arc::new(Hub::new(Config::default(), None));
         let app = router(hub.clone(), None);
 
         let res = app
