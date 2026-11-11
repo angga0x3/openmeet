@@ -1,0 +1,19 @@
+# Build output
+target/
+dist/
+node_modules/
+
+# Tauri generated
+apps/desktop/src-tauri/gen/
+apps/desktop/src-tauri/target/
+
+# Local data
+*.db
+*.db-journal
+*.log
+.env
+
+# Editors
+.vscode/
+.idea/
+.DS_Store

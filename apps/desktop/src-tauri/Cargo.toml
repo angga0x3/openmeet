@@ -1,0 +1,33 @@
+[package]
+name = "openmeet"
+version = "0.1.0"
+description = "Free, self-hosted meetings for the desktop"
+edition = "2021"
+rust-version = "1.85"
+license = "Apache-2.0"
+
+[lib]
+name = "openmeet_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-opener = "2"
+tauri-plugin-deep-link = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-clipboard-manager = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
