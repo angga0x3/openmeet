@@ -38,9 +38,14 @@ media core moves to Rust behind the same interface.
 apps/desktop            Tauri 2 shell + React UI (TypeScript, Vite)
   src/                  UI, signaling client, WebRTC mesh transport
   src-tauri/            Rust: window/tray/deep-link, settings, SQLite history
-crates/signaling        Rust signaling + room service (axum, tokio)
+crates/signaling        Rust signaling + room service (axum, tokio) + static web client
 deploy/coturn           TURN server for NAT traversal (self-host)
 ```
+
+The same Rust process serves the compiled web client when `OPENMEET_WEB_DIR` is set, so a
+single binary provides both `https://host/` and `wss://host/ws`. Browser clients derive their
+signaling address from the page origin; the desktop app falls back to the hosted instance and
+can be pointed anywhere in Settings.
 
 Runtime topology:
 

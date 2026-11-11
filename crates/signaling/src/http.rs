@@ -5,7 +5,7 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         Path, State,
     },
-    http::StatusCode,
+    http::{header, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
@@ -16,6 +16,7 @@ use tokio::sync::mpsc;
 use tower_http::{
     cors::CorsLayer,
     services::{ServeDir, ServeFile},
+    set_header::SetResponseHeaderLayer,
     trace::TraceLayer,
 };
 
@@ -28,25 +29,40 @@ pub type AppState = Arc<Hub>;
 
 const MAX_WS_MESSAGE: usize = 64 * 1024;
 const JOIN_TIMEOUT: Duration = Duration::from_secs(10);
+const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' ws: wss: http: https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
 
 pub fn router(hub: AppState, web_dir: Option<PathBuf>) -> Router {
-    let app = Router::new()
+    let mut app = Router::new()
         .route("/healthz", get(healthz))
         .route("/api/config", get(config))
         .route("/api/rooms", post(create_room))
         .route("/api/rooms/{id}", get(room_info))
-        .route("/ws", get(ws_handler))
-        .layer(CorsLayer::permissive())
-        .layer(TraceLayer::new_for_http())
-        .with_state(hub);
+        .route("/ws", get(ws_handler));
 
-    match web_dir {
-        Some(dir) => {
-            let index = dir.join("index.html");
-            app.fallback_service(ServeDir::new(dir).not_found_service(ServeFile::new(index)))
-        }
-        None => app,
+    if let Some(dir) = web_dir {
+        let index = dir.join("index.html");
+        app = app.fallback_service(ServeDir::new(dir).not_found_service(ServeFile::new(index)));
     }
+
+    app.layer(CorsLayer::permissive())
+        .layer(TraceLayer::new_for_http())
+        .layer(SetResponseHeaderLayer::overriding(
+            header::CONTENT_SECURITY_POLICY,
+            HeaderValue::from_static(CONTENT_SECURITY_POLICY),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::X_CONTENT_TYPE_OPTIONS,
+            HeaderValue::from_static("nosniff"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::REFERRER_POLICY,
+            HeaderValue::from_static("no-referrer"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::HeaderName::from_static("permissions-policy"),
+            HeaderValue::from_static("camera=(self), microphone=(self), display-capture=(self)"),
+        ))
+        .with_state(hub)
 }
 
 async fn healthz() -> impl IntoResponse {

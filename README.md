@@ -5,6 +5,8 @@ A free, self-hostable meeting app for desktop. Tauri 2 + Rust signaling + WebRTC
 OpenMeet is an independent project. It is not affiliated with, endorsed by, or compatible
 with Zoom's proprietary protocol or services.
 
+Try it: <https://openmeet.garox.my.id> (browser, no install) or build the desktop app below.
+
 ## What works today (v0)
 
 - Create a room, share a 12-character code, join from another machine
