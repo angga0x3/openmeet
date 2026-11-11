@@ -57,6 +57,25 @@ pub enum JoinError {
     Full,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum CreateRoomError {
+    Exists,
+    InvalidId,
+}
+
+/// Room codes are lowercase alphanumerics with optional single dashes.
+pub fn valid_room_id(id: &str) -> bool {
+    let len = id.len();
+    if !(6..=32).contains(&len) {
+        return false;
+    }
+    if id.starts_with('-') || id.ends_with('-') || id.contains("--") {
+        return false;
+    }
+    id.chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
 impl JoinError {
     pub fn code(&self) -> &'static str {
         match self {
@@ -210,6 +229,31 @@ impl Hub {
             );
             return id;
         }
+    }
+
+    /// Creates a room with a caller-chosen code (used for scheduled and personal rooms).
+    pub fn create_room_with_id(
+        &self,
+        id: &str,
+        passcode: Option<&str>,
+    ) -> Result<(), CreateRoomError> {
+        if !valid_room_id(id) {
+            return Err(CreateRoomError::InvalidId);
+        }
+        let mut rooms = self.inner.lock().expect("hub poisoned");
+        if rooms.contains_key(id) {
+            return Err(CreateRoomError::Exists);
+        }
+        rooms.insert(
+            id.to_string(),
+            Room {
+                passcode: passcode.map(Passcode::new),
+                peers: HashMap::new(),
+                host: None,
+                empty_since: Some(Instant::now()),
+            },
+        );
+        Ok(())
     }
 
     pub fn room_info(&self, room_id: &str) -> Option<RoomInfo> {

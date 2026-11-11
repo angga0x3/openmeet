@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Home } from "./components/Home";
-import { PreJoin } from "./components/PreJoin";
-import { MeetingRoom } from "./components/Meeting";
-import { SettingsDialog } from "./components/Settings";
+import { Dashboard, type Page } from "./components/Dashboard";
+import { JoinView, RoomView } from "./components/RoomView";
+import { JoinCodeModal, LeaveModal, ScheduleModal, ShortcutsModal, ToastStack, useToasts } from "./components/Modals";
 import { useMeeting } from "./lib/useMeeting";
 import { createRoom } from "./lib/signaling";
 import {
+  copyText,
   defaultSettings,
   listHistory,
   loadSettings,
@@ -13,27 +13,35 @@ import {
   onTrayAction,
   saveSettings,
 } from "./lib/platform";
-import { roomCode } from "./types";
+import { loadSchedule, nextColor, roomCode, saveSchedule, type ScheduleEntry } from "./lib/schedule";
+import { applyTheme, loadPrefs, savePrefs, slugify, type Prefs } from "./lib/theme";
 import type { HistoryEntry, Settings } from "./types";
 
-type View = "home" | "prejoin";
-type Pending = { room: string; passcode?: string };
+type Route =
+  | { name: "dash" }
+  | { name: "join"; room: string; passcode?: string; instant?: boolean };
 
 export default function App() {
   const meeting = useMeeting();
+  const { toasts, push } = useToasts();
+
   const [settings, setSettings] = useState<Settings>(defaultSettings);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [view, setView] = useState<View>("home");
-  const [pending, setPending] = useState<Pending | null>(null);
+  const [prefs, setPrefs] = useState<Prefs>(() => loadPrefs());
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [schedule, setSchedule] = useState<ScheduleEntry[]>(() => loadSchedule());
+  const [route, setRoute] = useState<Route>({ name: "dash" });
+  const [page, setPage] = useState<Page>("home");
   const [online, setOnline] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
-  const [homeError, setHomeError] = useState<string | null>(null);
+  const [joinModal, setJoinModal] = useState(false);
+  const [scheduleModal, setScheduleModal] = useState(false);
+  const [shortcuts, setShortcuts] = useState(false);
+  const [leaveOpen, setLeaveOpen] = useState(false);
+
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
-  const phaseRef = useRef(meeting.phase);
-  phaseRef.current = meeting.phase;
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const personalRoom = prefs.personalRoom || slugify(settings.displayName || "guest");
 
   useEffect(() => {
     void (async () => {
@@ -42,6 +50,14 @@ export default function App() {
       setHistory(recent);
     })();
   }, []);
+
+  useEffect(() => {
+    applyTheme(prefs.theme, prefs.accent);
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const apply = () => applyTheme(prefs.theme, prefs.accent);
+    media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
+  }, [prefs.theme, prefs.accent]);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,9 +69,9 @@ export default function App() {
           .replace(/^ws(s?):\/\//i, "http$1://");
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 4000);
-        const res = await fetch(`${base}/healthz`, { signal: controller.signal });
+        const response = await fetch(`${base}/healthz`, { signal: controller.signal });
         clearTimeout(timer);
-        if (!cancelled) setOnline(res.ok);
+        if (!cancelled) setOnline(response.ok);
       } catch {
         if (!cancelled) setOnline(false);
       }
@@ -72,13 +88,11 @@ export default function App() {
     let dispose = () => {};
     const handled = new Set<string>();
     void onDeepLink((url) => {
-      if (phaseRef.current === "live" || phaseRef.current === "joining") return;
       if (handled.has(url)) return;
       handled.add(url);
-      const code = roomCode(url.replace(/^openmeet:\/\//i, "https://openmeet/"));
+      const code = extractRoom(url);
       if (!code) return;
-      setPending({ room: code });
-      setView("prejoin");
+      setRoute({ name: "join", room: code });
     }).then((off) => {
       dispose = off;
     });
@@ -86,79 +100,153 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (meeting.phase === "live" || meeting.phase === "ended" || meeting.phase === "idle") {
-      void listHistory().then(setHistory);
-    }
+    if (meeting.phase !== "ended") return;
+    const message = meeting.notice ?? meeting.error ?? "Meeting ended";
+    meeting.leave();
+    setRoute({ name: "dash" });
+    setPage("home");
+    push(message, "info", 5000);
+    void listHistory().then(setHistory);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meeting.phase]);
 
   useEffect(() => {
-    if (!meeting.error) return;
-    setToast(meeting.error);
-    const timer = setTimeout(() => {
-      setToast(null);
-      meeting.clearError();
-    }, 6000);
-    return () => clearTimeout(timer);
-  }, [meeting.error, meeting.clearError]);
+    if (meeting.error) push(meeting.error, "info", 5000);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meeting.error]);
+
+  const inCall = meeting.phase === "joining" || meeting.phase === "live";
 
   useEffect(() => {
-    if (meeting.phase !== "live") return;
+    if (!inCall) return;
     const disposers: Array<() => void> = [];
-    void onTrayAction("toggle-mic", () => void meeting.toggleMic()).then((off) =>
-      disposers.push(off),
-    );
-    void onTrayAction("toggle-camera", () => void meeting.toggleCam()).then((off) =>
-      disposers.push(off),
-    );
-    void onTrayAction("leave", () => meeting.leave()).then((off) => disposers.push(off));
+    void onTrayAction("toggle-mic", () => void meeting.toggleMic()).then((off) => disposers.push(off));
+    void onTrayAction("toggle-camera", () => void meeting.toggleCam()).then((off) => disposers.push(off));
+    void onTrayAction("leave", () => setLeaveOpen(true)).then((off) => disposers.push(off));
     return () => disposers.forEach((off) => off());
-  }, [meeting.phase, meeting.toggleMic, meeting.toggleCam, meeting.leave]);
+  }, [inCall, meeting.toggleMic, meeting.toggleCam]);
 
-  const persist = useCallback((next: Settings) => {
-    setSettings(next);
-    void saveSettings(next);
+  const updatePrefs = useCallback((patch: Partial<Prefs>) => {
+    setPrefs((current) => {
+      const next: Prefs = { ...current, ...patch, notifications: { ...current.notifications, ...(patch.notifications ?? {}) } };
+      savePrefs(next);
+      return next;
+    });
   }, []);
 
-  const onCreate = useCallback(async (passcode?: string) => {
-    setBusy(true);
-    setHomeError(null);
+  const updateSettings = useCallback((patch: Partial<Settings>) => {
+    setSettings((current) => {
+      const next = { ...current, ...patch };
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(() => void saveSettings(next), 350);
+      return next;
+    });
+  }, []);
+
+  const copy = useCallback(
+    async (text: string, message = "Copied to clipboard") => {
+      if (!text) return;
+      const ok = await copyText(text);
+      push(ok ? message : "Could not access the clipboard", ok ? "check" : "info");
+    },
+    [push],
+  );
+
+  const ensureRoom = useCallback(async (room: string, passcode?: string) => {
     try {
-      const room = await createRoom(settingsRef.current.serverUrl, passcode);
-      setPending({ room });
-      setView("prejoin");
+      await createRoom(settingsRef.current.serverUrl, passcode, room);
     } catch (error) {
-      setHomeError(error instanceof Error ? error.message : "Could not create a room.");
-    } finally {
-      setBusy(false);
+      const message = error instanceof Error ? error.message : "";
+      if (!/already active|409/i.test(message)) throw error;
     }
   }, []);
 
-  const onJoinRequest = useCallback((room: string, passcode?: string) => {
-    setHomeError(null);
-    setPending({ room, passcode });
-    setView("prejoin");
-  }, []);
+  const startInstant = useCallback(async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const room = roomCode();
+      await ensureRoom(room);
+      setRoute({ name: "join", room, instant: true });
+    } catch (error) {
+      push(error instanceof Error ? error.message : "Could not reach the server", "info");
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, ensureRoom, push]);
 
-  const onPreJoin = useCallback(
+  const startPersonal = useCallback(async () => {
+    setBusy(true);
+    try {
+      if (!prefs.personalRoom) updatePrefs({ personalRoom });
+      await ensureRoom(personalRoom);
+      setRoute({ name: "join", room: personalRoom, instant: true });
+    } catch (error) {
+      push(error instanceof Error ? error.message : "Could not reach the server", "info");
+    } finally {
+      setBusy(false);
+    }
+  }, [ensureRoom, personalRoom, prefs.personalRoom, push, updatePrefs]);
+
+  const startScheduled = useCallback(
+    async (entry: ScheduleEntry) => {
+      setBusy(true);
+      try {
+        await ensureRoom(entry.room);
+        setRoute({ name: "join", room: entry.room, instant: true });
+      } catch (error) {
+        push(error instanceof Error ? error.message : "Could not reach the server", "info");
+      } finally {
+        setBusy(false);
+      }
+    },
+    [ensureRoom, push],
+  );
+
+  const saveScheduled = useCallback(
+    (input: { title: string; start: number; duration: number }) => {
+      const entry: ScheduleEntry = {
+        id: crypto.randomUUID(),
+        title: input.title,
+        start: input.start,
+        duration: input.duration,
+        room: roomCode(),
+        color: nextColor(schedule),
+      };
+      setSchedule((current) => {
+        const next = [...current, entry];
+        saveSchedule(next);
+        return next;
+      });
+      setScheduleModal(false);
+      push(`"${entry.title}" scheduled`, "check");
+      void copy(`openmeet.app/${entry.room}`, "Room code copied");
+    },
+    [copy, push, schedule],
+  );
+
+  const onJoinFromView = useCallback(
     (args: {
+      room: string;
+      passcode?: string;
       name: string;
       mic: boolean;
       cam: boolean;
       cameraId: string;
       micId: string;
     }) => {
-      if (!pending) return;
       const next: Settings = {
         ...settingsRef.current,
         displayName: args.name,
         cameraId: args.cameraId,
         micId: args.micId,
       };
-      persist(next);
+      setSettings(next);
+      void saveSettings(next);
       void meeting.join({
         serverUrl: next.serverUrl,
-        room: pending.room,
-        passcode: pending.passcode,
+        room: args.room,
+        passcode: args.passcode,
         name: args.name,
         mic: args.mic,
         cam: args.cam,
@@ -166,81 +254,137 @@ export default function App() {
         micId: args.micId,
       });
     },
-    [meeting, pending, persist],
+    [meeting],
   );
 
-  function backHome() {
+  const leaveCall = useCallback(() => {
     meeting.leave();
-    setView("home");
-    setPending(null);
-  }
+    setLeaveOpen(false);
+    setRoute({ name: "dash" });
+    setPage("home");
+    void listHistory().then(setHistory);
+  }, [meeting]);
 
-  const inCall = meeting.phase === "joining" || meeting.phase === "live";
-  const ended = meeting.phase === "ended";
+  const roomTitle =
+    route.name === "join"
+      ? schedule.find((entry) => entry.room === route.room)?.title ??
+        (route.room === personalRoom ? "Personal room" : route.instant ? "Instant meeting" : undefined)
+      : undefined;
 
   return (
     <>
-      {inCall && <MeetingRoom meeting={meeting} onOpenSettings={() => setSettingsOpen(true)} />}
-
-      {ended && (
-        <div className="ended">
-          <div className="card ended-card">
-            <h1>{meeting.notice ?? "Meeting ended"}</h1>
-            <p className="muted">{meeting.error ?? "Thanks for meeting on OpenMeet."}</p>
-            <button className="button primary" onClick={backHome} type="button">
-              Back to home
-            </button>
-          </div>
-        </div>
-      )}
-
-      {!inCall && !ended && view === "prejoin" && pending && (
-        <PreJoin
-          room={pending.room}
-          passcode={pending.passcode}
-          settings={settings}
-          joining={meeting.phase === "joining"}
-          error={meeting.error}
-          onJoin={onPreJoin}
-          onCancel={backHome}
-          onSettings={() => setSettingsOpen(true)}
+      {inCall && (
+        <RoomView
+          meeting={meeting}
+          room={route.name === "join" ? route.room : meeting.room}
+          title={roomTitle}
+          schedule={schedule}
+          onExit={() => {
+            setRoute({ name: "dash" });
+            setPage("home");
+            void listHistory().then(setHistory);
+          }}
+          onCopy={copy}
+          pushToast={(message, icon) => push(message, icon ?? "info")}
         />
       )}
 
-      {!inCall && !ended && view === "home" && (
-        <Home
+      {!inCall && route.name === "join" && (
+        <JoinView
+          room={route.room}
+          passcode={route.passcode}
+          instant={route.instant}
           settings={settings}
+          busy={meeting.phase === "joining"}
+          error={meeting.error}
+          schedule={schedule}
+          onJoin={onJoinFromView}
+          onBack={() => {
+            meeting.clearError();
+            setRoute({ name: "dash" });
+          }}
+          onCopy={copy}
+          onToast={(message) => push(message, "info")}
+        />
+      )}
+
+      {!inCall && route.name === "dash" && (
+        <Dashboard
+          page={page}
+          onPage={setPage}
+          settings={settings}
+          onSettings={updateSettings}
           history={history}
+          schedule={schedule}
+          prefs={prefs}
+          onPrefs={updatePrefs}
           online={online}
           busy={busy}
-          onCreate={(passcode) => void onCreate(passcode)}
-          onJoin={onJoinRequest}
-          onSettings={() => setSettingsOpen(true)}
+          personalRoom={personalRoom}
+          onInstant={() => void startInstant()}
+          onJoinCode={() => setJoinModal(true)}
+          onSchedule={() => setScheduleModal(true)}
+          onStartScheduled={(entry) => void startScheduled(entry)}
+          onJoinRoom={(room) => setRoute({ name: "join", room })}
+          onStartPersonal={() => void startPersonal()}
+          onOpenShortcuts={() => setShortcuts(true)}
+          onCopy={copy}
         />
       )}
 
-      {settingsOpen && (
-        <SettingsDialog
-          settings={settings}
-          online={online}
-          onSave={(next) => {
-            persist(next);
-            setSettingsOpen(false);
-          }}
-          onClose={() => setSettingsOpen(false)}
-        />
-      )}
+      <JoinCodeModal
+        open={joinModal}
+        onClose={() => setJoinModal(false)}
+        onContinue={(code, passcode) => {
+          const room = extractCode(code);
+          if (!room) {
+            push("That doesn't look like a room code", "info");
+            return;
+          }
+          setJoinModal(false);
+          setRoute({ name: "join", room, passcode });
+        }}
+      />
 
-      {homeError && view === "home" && (
-        <div className="toast error" role="status">
-          {homeError}
-          <button className="link-button" onClick={() => setHomeError(null)} type="button">
-            Dismiss
-          </button>
-        </div>
-      )}
+      <ScheduleModal open={scheduleModal} onClose={() => setScheduleModal(false)} onSave={saveScheduled} />
+      <ShortcutsModal open={shortcuts} onClose={() => setShortcuts(false)} />
 
-      {toast && <div className="toast" role="status">{toast}</div>}
+      <LeaveModal
+        open={leaveOpen}
+        onClose={() => setLeaveOpen(false)}
+        onLeave={leaveCall}
+        onEnd={() => {
+          meeting.endMeeting();
+          setLeaveOpen(false);
+        }}
+        isHost={meeting.isHost}
+      />
+
+      <ToastStack toasts={toasts} />
     </>
   );
+}
+
+function extractCode(value: string): string {
+  const raw = value.trim();
+  let candidate = raw;
+  try {
+    const normalized = raw.startsWith("openmeet://")
+      ? raw.replace(/^openmeet:\/\//, "https://openmeet/")
+      : raw;
+    const url = new URL(normalized);
+    candidate =
+      url.searchParams.get("room") ??
+      url.searchParams.get("code") ??
+      url.pathname.split("/").filter(Boolean).pop() ??
+      "";
+  } catch {
+    candidate = raw;
+  }
+  const cleaned = candidate.toLowerCase().replace(/[^a-z0-9-]/g, "");
+  return cleaned.length >= 6 ? cleaned : "";
+}
+
+function extractRoom(url: string): string {
+  return extractCode(url);
 }

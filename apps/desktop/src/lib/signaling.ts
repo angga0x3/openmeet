@@ -199,7 +199,7 @@ type IceServerFallback = {
   max_participants: number;
 };
 
-export async function createRoom(serverUrl: string, passcode?: string): Promise<string> {
+export async function createRoom(serverUrl: string, passcode?: string, id?: string): Promise<string> {
   const base = serverUrl
     .trim()
     .replace(/\/+$/, "")
@@ -207,7 +207,7 @@ export async function createRoom(serverUrl: string, passcode?: string): Promise<
   const res = await fetch(`${base}/api/rooms`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ passcode: passcode || undefined }),
+    body: JSON.stringify({ passcode: passcode || undefined, id: id || undefined }),
   });
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { message?: string } | null;

@@ -7,17 +7,25 @@ with Zoom's proprietary protocol or services.
 
 Try it: <https://openmeet.garox.my.id> (browser, no install) or build the desktop app below.
 
+![Home dashboard](docs/screenshots/home-light.png)
+
 ## What works today (v0)
 
-- Create a room, share a 12-character code, join from another machine
-- Camera and microphone with a pre-join device check and level meter
-- Gallery view with mute/camera state, active speaker outline
-- Screen share (where the platform webview supports `getDisplayMedia`)
-- In-meeting chat, presence, reactions, host can end the meeting
+- Dashboard: upcoming rooms, recent history, personal room, per-week stats, dark/light theme
+  and five accent colors
+- Local scheduling: pick a time, get a pre-created room code, share the link (no email invites)
+- Pre-join check: camera preview, mic level meter, device pickers, passcode field
+- Room: gallery and speaker layouts, pin, active-speaker outline, mute/camera state,
+  screen sharing, chat, participant list, reactions, host can end the meeting
+- Rooms are created with caller-chosen codes, so a scheduled or personal link keeps working
 - Meeting history (SQLite), tray menu, notifications, `openmeet://join/<code>` deep links
+- Web client served by the same Rust binary as the signaling service
+
+![Meeting room](docs/screenshots/room.png)
 
 Mesh topology: best for 1:1 and small rooms (up to 6–8). See
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the SFU/native-media path.
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the SFU/native-media path. Recording is not
+implemented yet; the Recordings page says so instead of pretending.
 
 ## Quickstart
 

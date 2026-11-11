@@ -22,7 +22,7 @@ use tower_http::{
 
 use crate::{
     protocol::{ClientMsg, IceServer, ServerMsg},
-    room::{valid_passcode, Hub, JoinError},
+    room::{valid_passcode, CreateRoomError, Hub, JoinError},
 };
 
 pub type AppState = Arc<Hub>;
@@ -86,6 +86,8 @@ async fn config(State(hub): State<AppState>) -> impl IntoResponse {
 struct CreateRoomReq {
     #[serde(default)]
     passcode: Option<String>,
+    #[serde(default)]
+    id: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -113,6 +115,38 @@ async fn create_room(
         },
     };
     let has_passcode = passcode.is_some();
+
+    if let Some(requested) = req.id {
+        let id = requested.trim().to_ascii_lowercase();
+        if id.is_empty() {
+            return api_error(
+                StatusCode::BAD_REQUEST,
+                "invalid_room_id",
+                "Room codes are 6-32 lowercase letters, digits, or single dashes.",
+            );
+        }
+        return match hub.create_room_with_id(&id, passcode.as_deref()) {
+            Ok(()) => (
+                StatusCode::CREATED,
+                Json(CreateRoomRes {
+                    room_id: id,
+                    has_passcode,
+                }),
+            )
+                .into_response(),
+            Err(CreateRoomError::Exists) => api_error(
+                StatusCode::CONFLICT,
+                "room_exists",
+                "That room code is already active.",
+            ),
+            Err(CreateRoomError::InvalidId) => api_error(
+                StatusCode::BAD_REQUEST,
+                "invalid_room_id",
+                "Room codes are 6-32 lowercase letters, digits, or single dashes.",
+            ),
+        };
+    }
+
     let room_id = hub.create_room(passcode.as_deref());
     (
         StatusCode::CREATED,
