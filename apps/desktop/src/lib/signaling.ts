@@ -152,8 +152,8 @@ export class SignalClient {
     this.send({ type: "chat", text });
   }
 
-  state(mic: boolean, cam: boolean, sharing: boolean) {
-    this.send({ type: "state", mic, cam, sharing });
+  state(mic: boolean, cam: boolean, sharing: boolean, hand: boolean) {
+    this.send({ type: "state", mic, cam, sharing, hand });
   }
 
   reaction(emoji: string) {
@@ -181,7 +181,7 @@ export class SignalClient {
 }
 
 export function selfPeer(id: string, name: string, mic: boolean, cam: boolean): Peer {
-  return { id, name, mic, cam, sharing: false };
+  return { id, name, mic, cam, sharing: false, hand: false };
 }
 
 export async function fetchIceServers(serverUrl: string): Promise<IceServerFallback> {

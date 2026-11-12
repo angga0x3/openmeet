@@ -126,10 +126,10 @@ plaintext SQLite column.
 |---|---|---|---|
 | Create/join room by code | yes | yes | yes |
 | Camera/mic, mute, device picker | yes | yes | yes |
-| Screen share | browser-only (OS dependent) | native capture, all OS | + window/region picker |
-| Chat, presence, reactions | yes (WS relay) | yes (data channel) | + history, threads |
+| Screen share | browser capture + system audio where supported | native capture, all OS | + window/region picker |
+| Chat, presence, reactions, raise hand | yes (WS relay) | yes (data channel) | + history, threads |
 | Grid/gallery + active speaker | grid | speaking detection | + pin/spotlight, pagination |
-| Recording | no | local, both sides | + server-side, consent flow |
+| Recording | local `.webm` (your mic + camera/screen) | mixed local capture, both sides | + server-side, consent flow |
 | Large rooms | mesh ≤ 6 | SFU (LiveKit) | cascaded SFU, 500+ |
 | Breakout rooms, polls, whiteboard | no | — | roadmap |
 | E2EE | DTLS-SRTP only | insertable streams | + per-room keys, verification |

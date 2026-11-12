@@ -809,14 +809,15 @@ function RecordingsPage() {
         <div className="empty-ic">
           <Icon name="circle-play" size={26} />
         </div>
-        <h3>Recording is not available yet</h3>
+        <h3>Local recordings stay local</h3>
         <p className="sub">
-          OpenMeet v0 does not record calls. The roadmap adds consent-based local recording, then
-          optional cloud storage on your own server.
+          Press Record inside a room to capture your microphone plus your camera (or screen) and
+          download a <span className="mono">.webm</span>. Recordings are not uploaded, and there is
+          no cloud library yet.
         </p>
         <div className="chip-row">
-          <span className="chip">v1: local recording</span>
-          <span className="chip">v2: self-hosted storage</span>
+          <span className="chip">local capture · ready</span>
+          <span className="chip">cloud library · roadmap</span>
         </div>
       </div>
     </section>
@@ -994,6 +995,16 @@ function SettingsPage({
                     <div className="sub">Camera stays off until you enable it</div>
                   </div>
                   <Switch checked={settings.startVideoOff} onChange={(value) => onSettings({ startVideoOff: value })} />
+                </div>
+                <div className="srow">
+                  <div>
+                    <b>Noise suppression</b>
+                    <div className="sub">On-device filtering plus echo cancellation</div>
+                  </div>
+                  <Switch
+                    checked={settings.noiseSuppression}
+                    onChange={(value) => onSettings({ noiseSuppression: value })}
+                  />
                 </div>
               </div>
             </>

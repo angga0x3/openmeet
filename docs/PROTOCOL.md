@@ -23,7 +23,7 @@ All field names are `snake_case` on the wire, matching the Rust types in
 { "type": "signal", "to": "<peer-id>", "data": { "kind": "answer", "sdp": "v=0..." } }
 { "type": "signal", "to": "<peer-id>", "data": { "kind": "ice", "candidate": { "candidate": "...", "sdpMid": "0" } } }
 { "type": "chat", "text": "hello" }
-{ "type": "state", "mic": true, "cam": true, "sharing": false }
+{ "type": "state", "mic": true, "cam": true, "sharing": false, "hand": false }
 { "type": "reaction", "emoji": "👍" }
 { "type": "end_meeting" }   // host only
 { "type": "ping" }          // heartbeat every 25 s; server answers pong
@@ -42,14 +42,14 @@ transport without changing the room layer.
 { "type": "peer_left", "peer_id": "..." }
 { "type": "signal", "from": "...", "data": { ... } }
 { "type": "chat", "from": "...", "name": "Ada", "text": "hello", "ts": 1762900000000 }
-{ "type": "state", "from": "...", "mic": true, "cam": false, "sharing": true }
+{ "type": "state", "from": "...", "mic": true, "cam": false, "sharing": true, "hand": false }
 { "type": "reaction", "from": "...", "name": "Ada", "emoji": "🎉" }
 { "type": "room_closed", "reason": "host_ended" }
 { "type": "error", "code": "room_full", "message": "Room is full." }
 ```
 
 ```jsonc
-Peer      = { "id": "uuid", "name": "Ada", "mic": true, "cam": true, "sharing": false }
+Peer      = { "id": "uuid", "name": "Ada", "mic": true, "cam": true, "sharing": false, "hand": false }
 IceServer = { "urls": ["stun:..."], "username": "optional", "credential": "optional" }
 ```
 

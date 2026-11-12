@@ -308,6 +308,7 @@ export default function App() {
       cam: boolean;
       cameraId: string;
       micId: string;
+      noiseSuppression?: boolean;
     }) => {
       const next: Settings = {
         ...settingsRef.current,
@@ -326,6 +327,7 @@ export default function App() {
         cam: args.cam,
         cameraId: args.cameraId,
         micId: args.micId,
+        noiseSuppression: args.noiseSuppression,
       });
     },
     [meeting],

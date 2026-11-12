@@ -2207,6 +2207,34 @@ svg {
   font-weight: 500;
 }
 
+.rec-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.rec-pill i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ef4444;
+  animation: blink 1.4s infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.tb.rec-on svg {
+  color: #ef4444;
+  animation: blink 1.4s infinite;
+}
+
 .layout-pill.active {
   color: var(--text);
   border-color: var(--border-3);
@@ -2325,6 +2353,24 @@ svg {
 .tile.speaking {
   box-shadow: 0 0 0 2px var(--accent), 0 0 0 6px color-mix(in srgb, var(--accent) 22%, transparent),
     0 10px 40px -10px color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+.hand-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 7px;
+  background: #fbbf24;
+  color: #1c1917;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.picons .hand {
+  display: inline-flex;
+  color: #fbbf24;
 }
 
 .tile-top {
@@ -2594,9 +2640,34 @@ svg {
   bottom: calc(100% + 10px);
   left: 50%;
   transform: translateX(-50%);
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(4, 40px);
   gap: 2px;
   padding: 4px;
+}
+
+.reaction-sep {
+  grid-column: 1 / -1;
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+.reaction-pop .hand-item {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 36px;
+  padding: 0 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text);
+  text-align: left;
+}
+
+.reaction-pop .hand-item:hover {
+  background: var(--surface-2);
 }
 
 .reaction-pop button {

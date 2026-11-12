@@ -405,8 +405,13 @@ async fn client_loop(socket: WebSocket, hub: AppState) {
                     ));
                 }
             },
-            ClientMsg::State { mic, cam, sharing } => {
-                if let Some(peer) = hub.state(&room, &peer_id, mic, cam, sharing) {
+            ClientMsg::State {
+                mic,
+                cam,
+                sharing,
+                hand,
+            } => {
+                if let Some(peer) = hub.state(&room, &peer_id, mic, cam, sharing, hand) {
                     hub.broadcast(
                         &room,
                         &ServerMsg::State {
@@ -414,6 +419,7 @@ async fn client_loop(socket: WebSocket, hub: AppState) {
                             mic: peer.mic,
                             cam: peer.cam,
                             sharing: peer.sharing,
+                            hand: peer.hand,
                         },
                         Some(&peer_id),
                     );

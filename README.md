@@ -15,9 +15,11 @@ Try it: <https://openmeet.garox.my.id> (browser, no install) or build the deskto
   and five accent colors
 - Scheduling: pick a time, get a pre-created room code, share the link. Stored in Neon
   Postgres when `DATABASE_URL` is set, otherwise locally in the browser (no email invites)
-- Pre-join check: camera preview, mic level meter, device pickers, passcode field
+- Pre-join check: camera preview, mic level meter, device pickers, passcode field,
+  noise suppression / echo cancellation toggles
 - Room: gallery and speaker layouts, pin, active-speaker outline, mute/camera state,
-  screen sharing, chat, participant list, reactions, host can end the meeting
+  screen sharing (with system audio when the browser provides it), chat, participant list,
+  reactions, raise hand, local recording (`webm` download), host can end the meeting
 - Rooms are created with caller-chosen codes, so a scheduled or personal link keeps working
 - Meeting history (SQLite), tray menu, notifications, `openmeet://join/<code>` deep links
 - Web client served by the same Rust binary as the signaling service
@@ -25,8 +27,9 @@ Try it: <https://openmeet.garox.my.id> (browser, no install) or build the deskto
 ![Meeting room](docs/screenshots/room.png)
 
 Mesh topology: best for 1:1 and small rooms (up to 6–8). See
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the SFU/native-media path. Recording is not
-implemented yet; the Recordings page says so instead of pretending.
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the SFU/native-media path. Recording is local
+only (your mic plus camera or screen, saved as `.webm`); server-side/cloud recording is still
+on the roadmap, which is why the Recordings page stays empty.
 
 ## Quickstart
 

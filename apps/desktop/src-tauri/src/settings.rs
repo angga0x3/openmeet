@@ -13,6 +13,7 @@ pub struct Settings {
     pub speaker_id: String,
     pub start_muted: bool,
     pub start_video_off: bool,
+    pub noise_suppression: bool,
 }
 
 impl Default for Settings {
@@ -25,6 +26,7 @@ impl Default for Settings {
             speaker_id: String::new(),
             start_muted: false,
             start_video_off: false,
+            noise_suppression: true,
         }
     }
 }

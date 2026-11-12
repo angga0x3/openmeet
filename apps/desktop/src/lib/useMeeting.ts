@@ -22,13 +22,23 @@ export type JoinArgs = {
   cam: boolean;
   cameraId?: string;
   micId?: string;
+  noiseSuppression?: boolean;
 };
 
 const FALLBACK_ICE: IceServer[] = [{ urls: ["stun:stun.l.google.com:19302"] }];
 
+function audioConstraints(micId?: string, noiseSuppression = true): MediaTrackConstraints {
+  return {
+    ...(micId ? { deviceId: { exact: micId } } : {}),
+    echoCancellation: true,
+    noiseSuppression,
+    autoGainControl: true,
+  };
+}
+
 function mediaConstraints(args: JoinArgs): MediaStreamConstraints {
   return {
-    audio: args.micId ? { deviceId: { exact: args.micId } } : true,
+    audio: audioConstraints(args.micId, args.noiseSuppression !== false),
     video: args.cameraId
       ? { deviceId: { exact: args.cameraId }, width: { ideal: 1280 }, height: { ideal: 720 } }
       : { width: { ideal: 1280 }, height: { ideal: 720 } },
@@ -62,6 +72,7 @@ export function useMeeting() {
   const [micOn, setMicOn] = useState(false);
   const [camOn, setCamOn] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [handOn, setHandOn] = useState(false);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [startedAt, setStartedAt] = useState<number | null>(null);
@@ -76,6 +87,8 @@ export function useMeeting() {
   const micRef = useRef(false);
   const camRef = useRef(false);
   const sharingRef = useRef(false);
+  const handRef = useRef(false);
+  const noiseRef = useRef(true);
   const startedRef = useRef<number | null>(null);
   const countedRef = useRef(0);
   const recordedRef = useRef(false);
@@ -109,6 +122,16 @@ export function useMeeting() {
       const self = prev[selfIdRef.current];
       if (!self) return prev;
       return { ...prev, [self.id]: { ...self, sharing: value } };
+    });
+  }, []);
+
+  const setHand = useCallback((value: boolean) => {
+    handRef.current = value;
+    setHandOn(value);
+    setParticipants((prev) => {
+      const self = prev[selfIdRef.current];
+      if (!self) return prev;
+      return { ...prev, [self.id]: { ...self, hand: value } };
     });
   }, []);
 
@@ -162,6 +185,7 @@ export function useMeeting() {
     setMic(false);
     setCam(false);
     setSharingState(false);
+    setHand(false);
     selfIdRef.current = "";
     peersRef.current = {};
     startedRef.current = null;
@@ -202,9 +226,11 @@ export function useMeeting() {
       stream?.getVideoTracks().forEach((track) => (track.enabled = args.cam));
       micRef.current = args.mic;
       camRef.current = args.cam;
+      noiseRef.current = args.noiseSuppression !== false;
       setMicOn(args.mic);
       setCamOn(args.cam);
       setSharingState(false);
+      setHand(false);
 
       let ice = FALLBACK_ICE;
       try {
@@ -261,6 +287,7 @@ export function useMeeting() {
             mic: args.mic,
             cam: args.cam,
             sharing: false,
+            hand: false,
           },
         };
         for (const peer of message.peers) map[peer.id] = peer;
@@ -338,6 +365,7 @@ export function useMeeting() {
             mic: message.mic,
             cam: message.cam,
             sharing: message.sharing,
+            hand: message.hand,
           },
         } as Record<string, Peer>;
         setParticipants((prev) => {
@@ -350,6 +378,7 @@ export function useMeeting() {
               mic: message.mic,
               cam: message.cam,
               sharing: message.sharing,
+              hand: message.hand,
             },
           };
         });
@@ -365,6 +394,7 @@ export function useMeeting() {
                 mic: message.mic,
                 cam: message.cam,
                 sharing: message.sharing,
+                hand: message.hand,
               },
             },
           };
@@ -429,7 +459,7 @@ export function useMeeting() {
       try {
         const fresh = await navigator.mediaDevices.getUserMedia(
           kind === "audio"
-            ? { audio: deviceId ? { deviceId: { exact: deviceId } } : true }
+            ? { audio: audioConstraints(deviceId, noiseRef.current) }
             : {
                 video: deviceId
                   ? { deviceId: { exact: deviceId } }
@@ -464,12 +494,12 @@ export function useMeeting() {
       if (!track) return;
       track.enabled = true;
       setMic(true);
-      signalRef.current?.state(true, camRef.current, sharingRef.current);
+      signalRef.current?.state(true, camRef.current, sharingRef.current, handRef.current);
       return;
     }
     current.enabled = !current.enabled;
     setMic(current.enabled);
-    signalRef.current?.state(current.enabled, camRef.current, sharingRef.current);
+    signalRef.current?.state(current.enabled, camRef.current, sharingRef.current, handRef.current);
   }, [ensureTrack, setMic]);
 
   const toggleCam = useCallback(async () => {
@@ -479,12 +509,12 @@ export function useMeeting() {
       if (!track) return;
       track.enabled = true;
       setCam(true);
-      signalRef.current?.state(micRef.current, true, sharingRef.current);
+      signalRef.current?.state(micRef.current, true, sharingRef.current, handRef.current);
       return;
     }
     current.enabled = !current.enabled;
     setCam(current.enabled);
-    signalRef.current?.state(micRef.current, current.enabled, sharingRef.current);
+    signalRef.current?.state(micRef.current, current.enabled, sharingRef.current, handRef.current);
   }, [ensureTrack, setCam]);
 
   const startShare = useCallback(async () => {
@@ -492,29 +522,61 @@ export function useMeeting() {
       setError("Screen sharing is not available in this webview on this platform.");
       return;
     }
+    const video: MediaTrackConstraints = {
+      frameRate: { ideal: 15, max: 30 },
+      width: { max: 1920 },
+    };
+    let display: MediaStream | null = null;
     try {
-      const display = await navigator.mediaDevices.getDisplayMedia({
-        video: { frameRate: 15 },
-        audio: false,
-      });
-      const track = display.getVideoTracks()[0];
-      if (!track) return;
-      track.addEventListener("ended", () => {
-        meshRef.current?.stopScreenShare();
-        screenRef.current = null;
-        setScreenStream(null);
-        setSharingState(false);
-        signalRef.current?.state(micRef.current, camRef.current, false);
-      });
-      screenRef.current = display;
-      setScreenStream(display);
-      meshRef.current?.startScreenShare(display);
-      setSharingState(true);
-      signalRef.current?.state(micRef.current, camRef.current, true);
+      display = await navigator.mediaDevices.getDisplayMedia({
+        video,
+        audio: true,
+        systemAudio: "include",
+        selfBrowserSurface: "exclude",
+        surfaceSwitching: "include",
+      } as unknown as DisplayMediaStreamOptions);
     } catch (err) {
-      if (err instanceof DOMException && err.name === "NotAllowedError") return;
-      setError("Could not start screen sharing.");
+      if (
+        err instanceof DOMException &&
+        (err.name === "NotAllowedError" || err.name === "AbortError")
+      ) {
+        return;
+      }
+      try {
+        display = await navigator.mediaDevices.getDisplayMedia({ video, audio: false });
+      } catch (fallbackError) {
+        if (
+          fallbackError instanceof DOMException &&
+          (fallbackError.name === "NotAllowedError" || fallbackError.name === "AbortError")
+        ) {
+          return;
+        }
+        setError("Could not start screen sharing.");
+        return;
+      }
     }
+
+    const videoTrack = display.getVideoTracks()[0];
+    if (!videoTrack) return;
+    const stop = () => {
+      meshRef.current?.stopScreenShare();
+      screenRef.current?.getTracks().forEach((track) => track.stop());
+      screenRef.current = null;
+      setScreenStream(null);
+      setSharingState(false);
+      signalRef.current?.state(
+        micRef.current,
+        camRef.current,
+        false,
+        handRef.current,
+      );
+    };
+    videoTrack.addEventListener("ended", stop);
+    screenRef.current = display;
+    setScreenStream(display);
+    meshRef.current?.startScreenShare(display);
+    setSharingState(true);
+    signalRef.current?.state(micRef.current, camRef.current, true, handRef.current);
   }, [setSharingState]);
 
   const stopShare = useCallback(() => {
@@ -523,8 +585,15 @@ export function useMeeting() {
     screenRef.current = null;
     setScreenStream(null);
     setSharingState(false);
-    signalRef.current?.state(micRef.current, camRef.current, false);
+    signalRef.current?.state(micRef.current, camRef.current, false, handRef.current);
   }, [setSharingState]);
+
+  const toggleHand = useCallback(() => {
+    if (!signalRef.current) return;
+    const next = !handRef.current;
+    setHand(next);
+    signalRef.current.state(micRef.current, camRef.current, sharingRef.current, next);
+  }, [setHand]);
 
   const sendChat = useCallback((text: string) => {
     const trimmed = text.trim();
@@ -580,6 +649,7 @@ export function useMeeting() {
     micOn,
     camOn,
     sharing,
+    handOn,
     localStream,
     screenStream,
     startedAt,
@@ -587,6 +657,7 @@ export function useMeeting() {
     leave,
     toggleMic,
     toggleCam,
+    toggleHand,
     startShare,
     stopShare,
     sendChat,

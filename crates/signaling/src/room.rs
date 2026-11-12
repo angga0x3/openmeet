@@ -301,6 +301,7 @@ impl Hub {
             mic,
             cam,
             sharing: false,
+            hand: false,
         };
         room.peers.insert(
             id.clone(),
@@ -476,6 +477,7 @@ impl Hub {
         mic: bool,
         cam: bool,
         sharing: bool,
+        hand: bool,
     ) -> Option<Peer> {
         let mut rooms = self.inner.lock().expect("hub poisoned");
         let room = rooms.get_mut(room_id)?;
@@ -483,6 +485,7 @@ impl Hub {
         entry.peer.mic = mic;
         entry.peer.cam = cam;
         entry.peer.sharing = sharing;
+        entry.peer.hand = hand;
         Some(entry.peer.clone())
     }
 

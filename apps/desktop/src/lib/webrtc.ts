@@ -17,6 +17,7 @@ type Conn = {
   camSender: RTCRtpSender | null;
   micSender: RTCRtpSender | null;
   screenSender: RTCRtpSender | null;
+  screenAudioSender: RTCRtpSender | null;
   remoteCamStreamId: string | null;
 };
 
@@ -70,6 +71,7 @@ export class MeshTransport {
       camSender: null,
       micSender: null,
       screenSender: null,
+      screenAudioSender: null,
       remoteCamStreamId: null,
     };
     this.conns.set(peerId, conn);
@@ -101,17 +103,21 @@ export class MeshTransport {
     pc.ontrack = (event) => {
       const stream = event.streams[0];
       if (!stream) return;
-      if (event.track.kind === "video") {
-        if (!conn.remoteCamStreamId || conn.remoteCamStreamId === stream.id) {
-          conn.remoteCamStreamId = stream.id;
-          conn.camStream = stream;
-        } else {
-          conn.screenStream = stream;
-        }
-      } else if (!conn.camStream) {
+      if (!conn.remoteCamStreamId) conn.remoteCamStreamId = stream.id;
+      if (stream.id === conn.remoteCamStreamId) {
         conn.camStream = stream;
+      } else {
+        conn.screenStream = stream;
       }
-      event.track.addEventListener("ended", () => this.emit(peerId, conn));
+      event.track.addEventListener("ended", () => {
+        if (
+          conn.screenStream === stream &&
+          stream.getVideoTracks().every((track) => track.readyState === "ended")
+        ) {
+          conn.screenStream = null;
+        }
+        this.emit(peerId, conn);
+      });
       this.emit(peerId, conn);
     };
 
@@ -153,9 +159,11 @@ export class MeshTransport {
 
   private attachScreen(conn: Conn) {
     const screen = this.screenStream;
-    if (!screen || conn.screenSender) return;
-    const track = screen.getVideoTracks()[0];
-    if (track) conn.screenSender = conn.pc.addTrack(track, screen);
+    if (!screen) return;
+    const video = screen.getVideoTracks()[0];
+    if (video && !conn.screenSender) conn.screenSender = conn.pc.addTrack(video, screen);
+    const audio = screen.getAudioTracks()[0];
+    if (audio && !conn.screenAudioSender) conn.screenAudioSender = conn.pc.addTrack(audio, screen);
   }
 
   replaceLocalStream(stream: MediaStream | null) {
@@ -205,14 +213,16 @@ export class MeshTransport {
   stopScreenShare() {
     this.screenStream = null;
     for (const conn of this.conns.values()) {
-      if (conn.screenSender) {
+      for (const sender of [conn.screenSender, conn.screenAudioSender]) {
+        if (!sender) continue;
         try {
-          conn.pc.removeTrack(conn.screenSender);
+          conn.pc.removeTrack(sender);
         } catch {
           // Connection already closed.
         }
-        conn.screenSender = null;
       }
+      conn.screenSender = null;
+      conn.screenAudioSender = null;
     }
   }
 

@@ -70,6 +70,7 @@ export function JoinView({
     cam: boolean;
     cameraId: string;
     micId: string;
+    noiseSuppression?: boolean;
   }) => void;
   onBack: () => void;
   onCopy: (text: string, message?: string) => void;
@@ -384,6 +385,7 @@ export function JoinView({
                   cam,
                   cameraId,
                   micId,
+                  noiseSuppression: settings.noiseSuppression,
                 })
               }
             >
@@ -415,6 +417,11 @@ export function RoomView({ meeting, room, title, schedule, onExit, onCopy, pushT
   const [now, setNow] = useState(Date.now());
   const [audioId, setAudioId] = useState("");
   const [videoId, setVideoId] = useState("");
+  const [recording, setRecording] = useState(false);
+  const [recStartedAt, setRecStartedAt] = useState<number | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const discardRef = useRef(false);
 
   const gridRef = useRef<HTMLDivElement | null>(null);
   const chatRef = useRef<HTMLDivElement | null>(null);
@@ -465,6 +472,15 @@ export function RoomView({ meeting, room, title, schedule, onExit, onCopy, pushT
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [meeting, panel]);
+
+  useEffect(() => {
+    return () => {
+      discardRef.current = true;
+      if (recorderRef.current && recorderRef.current.state !== "inactive") {
+        recorderRef.current.stop();
+      }
+    };
+  }, []);
 
   const self = meeting.participants.find((peer) => peer.id === meeting.selfId);
   const sharingPeer = meeting.participants.find(
@@ -542,6 +558,71 @@ export function RoomView({ meeting, room, title, schedule, onExit, onCopy, pushT
     }
   }
 
+  function startRecording() {
+    if (!window.MediaRecorder) {
+      pushToast("Recording is not supported in this browser", "info");
+      return;
+    }
+    const mic = meeting.localStream?.getAudioTracks()[0];
+    const video = meeting.sharing && meeting.screenStream
+      ? meeting.screenStream.getVideoTracks()[0]
+      : meeting.localStream?.getVideoTracks()[0];
+    const tracks = [video, mic].filter((track): track is MediaStreamTrack => Boolean(track));
+    if (tracks.length === 0) {
+      pushToast("Start your camera or microphone before recording", "info");
+      return;
+    }
+
+    const stream = new MediaStream(tracks);
+    const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
+      ? "video/webm;codecs=vp9,opus"
+      : MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")
+        ? "video/webm;codecs=vp8,opus"
+        : "video/webm";
+    let recorder: MediaRecorder;
+    try {
+      recorder = new MediaRecorder(stream, { mimeType });
+    } catch {
+      pushToast("Could not start the recorder", "info");
+      return;
+    }
+
+    chunksRef.current = [];
+    discardRef.current = false;
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) chunksRef.current.push(event.data);
+    };
+    recorder.onstop = () => {
+      const blob = new Blob(chunksRef.current, { type: mimeType });
+      chunksRef.current = [];
+      recorderRef.current = null;
+      if (!discardRef.current && blob.size > 0) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `openmeet-${room}-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.webm`;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        pushToast("Recording saved to your downloads", "check");
+      }
+    };
+
+    recorder.start(1000);
+    recorderRef.current = recorder;
+    setRecording(true);
+    setRecStartedAt(Date.now());
+    meeting.sendChat(`🔴 ${meeting.participants.find((p) => p.id === meeting.selfId)?.name ?? "Someone"} started a local recording (their mic + video)`);
+  }
+
+  function stopRecording() {
+    if (recorderRef.current && recorderRef.current.state !== "inactive") {
+      recorderRef.current.stop();
+    }
+    setRecording(false);
+    setRecStartedAt(null);
+    meeting.sendChat("⏹ Local recording stopped");
+  }
+
   function tileFor(id: string, big = false) {
     const peer = meeting.participants.find((item) => item.id === id);
     if (!peer) return null;
@@ -557,6 +638,7 @@ export function RoomView({ meeting, room, title, schedule, onExit, onCopy, pushT
         isSelf={isSelf}
         host={isSelf ? meeting.isHost : false}
         speaking={active === peer.id}
+        hand={peer.hand}
         pinned={pinned === peer.id}
         onPin={() => setPinned(pinned === peer.id ? null : peer.id)}
         big={big}
@@ -588,6 +670,12 @@ export function RoomView({ meeting, room, title, schedule, onExit, onCopy, pushT
             <Icon name="clock" size={14} />
             <span>{fmt(elapsed)}</span>
           </span>
+          {recording && recStartedAt && (
+            <span className="pill rec-pill">
+              <i />
+              REC <span>{fmt((now - recStartedAt) / 1000)}</span>
+            </span>
+          )}
           <div className="tb-menu-wrap">
             <button className={`pill layout-pill ${layoutMenu ? "active" : ""}`} onClick={() => setLayoutMenu((value) => !value)}>
               <Icon name="layout-grid" size={14} />
@@ -746,9 +834,13 @@ export function RoomView({ meeting, room, title, schedule, onExit, onCopy, pushT
               <span className="tb-label">Chat</span>
               {unread > 0 && <span className="tb-badge">{unread}</span>}
             </button>
-            <button className="tb" onClick={() => pushToast("Recording is not available in this build", "info")} title="Record">
+            <button
+              className={`tb ${recording ? "rec-on active" : ""}`}
+              onClick={() => (recording ? stopRecording() : startRecording())}
+              title={recording ? "Stop recording" : "Record locally"}
+            >
               <Icon name="circle-dot" size={20} />
-              <span className="tb-label">Record</span>
+              <span className="tb-label">{recording ? "Stop rec" : "Record"}</span>
             </button>
             <div className="reaction-wrap">
               <button className={`tb ${reactionMenu ? "active" : ""}`} onClick={() => setReactionMenu((value) => !value)} title="Reactions">
@@ -768,6 +860,17 @@ export function RoomView({ meeting, room, title, schedule, onExit, onCopy, pushT
                       {emoji}
                     </button>
                   ))}
+                  <div className="reaction-sep" />
+                  <button
+                    className="hand-item"
+                    onClick={() => {
+                      meeting.toggleHand();
+                      setReactionMenu(false);
+                    }}
+                  >
+                    <Icon name="hand" size={16} />
+                    <span>{meeting.handOn ? "Lower hand" : "Raise hand"}</span>
+                  </button>
                 </div>
               )}
             </div>
@@ -866,6 +969,11 @@ export function RoomView({ meeting, room, title, schedule, onExit, onCopy, pushT
                           {peer.id === meeting.selfId && meeting.isHost && <small> · Host</small>}
                         </div>
                         <div className="picons">
+                          {peer.hand && (
+                            <span className="hand">
+                              <Icon name="hand" size={15} />
+                            </span>
+                          )}
                           <span className={peer.mic ? "" : "red"}>
                             <Icon name={peer.mic ? "mic" : "mic-off"} size={15} />
                           </span>
@@ -974,6 +1082,7 @@ function Tile({
   isSelf,
   host,
   speaking,
+  hand,
   pinned,
   onPin,
   big,
@@ -985,6 +1094,7 @@ function Tile({
   isSelf: boolean;
   host: boolean;
   speaking: boolean;
+  hand: boolean;
   pinned: boolean;
   onPin: () => void;
   big?: boolean;
@@ -1013,7 +1123,13 @@ function Tile({
         </div>
       )}
       <div className="tile-top">
-        <span />
+        {hand ? (
+          <span className="hand-badge">
+            <Icon name="hand" size={13} /> Hand
+          </span>
+        ) : (
+          <span />
+        )}
         <button className={`tile-pin ${pinned ? "active" : ""}`} onClick={onPin} title="Pin">
           <Icon name="pin" size={14} />
         </button>

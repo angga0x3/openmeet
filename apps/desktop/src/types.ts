@@ -4,6 +4,7 @@ export type Peer = {
   mic: boolean;
   cam: boolean;
   sharing: boolean;
+  hand: boolean;
 };
 
 export type IceServer = {
@@ -45,7 +46,7 @@ export type ServerMsg =
   | { type: "peer_left"; peer_id: string }
   | { type: "signal"; from: string; data: SignalData }
   | { type: "chat"; from: string; name: string; text: string; ts: number }
-  | { type: "state"; from: string; mic: boolean; cam: boolean; sharing: boolean }
+  | { type: "state"; from: string; mic: boolean; cam: boolean; sharing: boolean; hand: boolean }
   | { type: "reaction"; from: string; name: string; emoji: string }
   | { type: "room_closed"; reason: string }
   | { type: "error"; code: string; message: string }
@@ -59,6 +60,7 @@ export type Settings = {
   speakerId: string;
   startMuted: boolean;
   startVideoOff: boolean;
+  noiseSuppression: boolean;
 };
 
 export type HistoryEntry = {

@@ -11,6 +11,8 @@ pub struct Peer {
     pub cam: bool,
     #[serde(default)]
     pub sharing: bool,
+    #[serde(default)]
+    pub hand: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -48,6 +50,8 @@ pub enum ClientMsg {
         mic: bool,
         cam: bool,
         sharing: bool,
+        #[serde(default)]
+        hand: bool,
     },
     Reaction {
         emoji: String,
@@ -91,6 +95,7 @@ pub enum ServerMsg {
         mic: bool,
         cam: bool,
         sharing: bool,
+        hand: bool,
     },
     Reaction {
         from: String,

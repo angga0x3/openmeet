@@ -38,6 +38,7 @@ export const defaultSettings: Settings = {
   speakerId: "",
   startMuted: false,
   startVideoOff: false,
+  noiseSuppression: true,
 };
 
 function readLocal<T>(key: string): T | null {
