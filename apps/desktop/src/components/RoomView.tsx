@@ -666,6 +666,16 @@ export function RoomView({ meeting, room, title, schedule, onExit, onCopy, pushT
           </span>
         </div>
         <div className="rt-right">
+          <span
+            className="pill transport-pill"
+            title={
+              meeting.transport === "sfu"
+                ? "Media relayed by the LiveKit SFU"
+                : "Peer-to-peer mesh media"
+            }
+          >
+            {meeting.transport === "sfu" ? "SFU" : "P2P"}
+          </span>
           <span className="pill">
             <Icon name="clock" size={14} />
             <span>{fmt(elapsed)}</span>

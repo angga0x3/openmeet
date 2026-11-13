@@ -37,7 +37,7 @@ transport without changing the room layer.
 ## Server → client
 
 ```jsonc
-{ "type": "welcome", "self_id": "...", "room": "...", "peers": [Peer], "ice_servers": [IceServer], "is_host": true }
+{ "type": "welcome", "self_id": "...", "room": "...", "peers": [Peer], "ice_servers": [IceServer], "is_host": true, "media_token": "..." }
 { "type": "peer_joined", "peer": Peer }
 { "type": "peer_left", "peer_id": "..." }
 { "type": "signal", "from": "...", "data": { ... } }
@@ -67,6 +67,7 @@ Error codes: `bad_request`, `bad_message`, `already_joined`, `room_not_found`, `
 | GET | `/api/schedule` | Scheduled rooms for the caller (requires `x-openmeet-key`) |
 | POST | `/api/schedule` | `{"title","start","duration","color"}` → `201` entry (requires the key) |
 | DELETE | `/api/schedule/{id}` | `204`, `404`, or `503` when no database is configured |
+| POST | `/api/livekit/token` | `{"room","identity","media_token"}` → `{"url","token"}`; `401` without membership, `503` without LiveKit |
 
 Scheduling is backed by PostgreSQL (Neon in the reference deployment). The client sends an
 opaque `x-openmeet-key` header (8–128 characters, generated per browser profile). Rows are

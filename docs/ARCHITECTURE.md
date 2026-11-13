@@ -61,8 +61,11 @@ Rooms are ephemeral and hold no media. Media never touches the signaling server.
 
 ## 3. Media strategy (v0 → v1)
 
-**v0 (this tree): mesh WebRTC in the webview.**
-- `RTCPeerConnection` per peer, perfect-negotiation pattern to survive glare.
+**v0 (this tree): LiveKit SFU, with the mesh as fallback.**
+- When `LIVEKIT_URL` is configured, media (camera, microphone, screen + screen audio) is
+  published to a LiveKit SFU. Signaling, chat, presence and raise-hand stay on our WebSocket;
+  only the media plane moves. Tokens are minted server-side and bound to room membership.
+- Without LiveKit, a mesh of `RTCPeerConnection`s with perfect negotiation is used.
 - Camera/mic captured with `getUserMedia`, screen with `getDisplayMedia`.
 - Practical room size: 1:1 to ~6 participants; upload bandwidth and CPU grow linearly.
 - Works today on Windows (WebView2), macOS (WKWebView), Linux (WebKitGTK) for camera/mic.
@@ -130,7 +133,7 @@ plaintext SQLite column.
 | Chat, presence, reactions, raise hand | yes (WS relay) | yes (data channel) | + history, threads |
 | Grid/gallery + active speaker | grid | speaking detection | + pin/spotlight, pagination |
 | Recording | local `.webm` (your mic + camera/screen) | mixed local capture, both sides | + server-side, consent flow |
-| Large rooms | mesh ≤ 6 | SFU (LiveKit) | cascaded SFU, 500+ |
+| Large rooms | mesh ≤ 6; LiveKit SFU (25 configured) | cascaded SFU | 500+ |
 | Breakout rooms, polls, whiteboard | no | — | roadmap |
 | E2EE | DTLS-SRTP only | insertable streams | + per-room keys, verification |
 | Auth / SSO | no (link-based) | optional OIDC | + SCIM |

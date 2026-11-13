@@ -73,6 +73,7 @@ pub enum ServerMsg {
         peers: Vec<Peer>,
         ice_servers: Vec<IceServer>,
         is_host: bool,
+        media_token: String,
     },
     PeerJoined {
         peer: Peer,

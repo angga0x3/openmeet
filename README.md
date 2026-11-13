@@ -20,16 +20,20 @@ Try it: <https://openmeet.garox.my.id> (browser, no install) or build the deskto
 - Room: gallery and speaker layouts, pin, active-speaker outline, mute/camera state,
   screen sharing (with system audio when the browser provides it), chat, participant list,
   reactions, raise hand, local recording (`webm` download), host can end the meeting
+- SFU media through LiveKit when configured (25 participants on the reference instance), with
+  automatic fallback to the peer-to-peer mesh
 - Rooms are created with caller-chosen codes, so a scheduled or personal link keeps working
 - Meeting history (SQLite), tray menu, notifications, `openmeet://join/<code>` deep links
 - Web client served by the same Rust binary as the signaling service
 
 ![Meeting room](docs/screenshots/room.png)
 
-Mesh topology: best for 1:1 and small rooms (up to 6–8). See
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the SFU/native-media path. Recording is local
-only (your mic plus camera or screen, saved as `.webm`); server-side/cloud recording is still
-on the roadmap, which is why the Recordings page stays empty.
+Media runs on a LiveKit SFU when `LIVEKIT_URL`, `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET` are
+set (reference instance: 25 participants); without them the client falls back to the
+peer-to-peer mesh (best for 1:1 and 6–8 people). See
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Recording is local only (your mic plus camera or
+screen, saved as `.webm`); server-side/cloud recording is still on the roadmap, which is why
+the Recordings page stays empty.
 
 ## Quickstart
 

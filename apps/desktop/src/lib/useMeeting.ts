@@ -8,7 +8,9 @@ import type {
   RemoteView,
 } from "../types";
 import { MeshTransport } from "./webrtc";
+import type { LiveKitMedia } from "./livekit";
 import { SignalClient, fetchIceServers } from "./signaling";
+import { httpBase } from "../types";
 import { addHistory, notify } from "./platform";
 
 export type Phase = "idle" | "joining" | "live" | "ended";
@@ -79,6 +81,10 @@ export function useMeeting() {
 
   const signalRef = useRef<SignalClient | null>(null);
   const meshRef = useRef<MeshTransport | null>(null);
+  const sfuRef = useRef<LiveKitMedia | null>(null);
+  const transportRef = useRef<"pending" | "sfu" | "mesh">("mesh");
+  const livekitUrlRef = useRef<string | null>(null);
+  const [transport, setTransport] = useState<"sfu" | "mesh">("mesh");
   const localRef = useRef<MediaStream | null>(null);
   const screenRef = useRef<MediaStream | null>(null);
   const selfIdRef = useRef("");
@@ -150,6 +156,12 @@ export function useMeeting() {
       timersRef.current = [];
       meshRef.current?.closeAll();
       meshRef.current = null;
+      if (sfuRef.current) {
+        void sfuRef.current.disconnect();
+        sfuRef.current = null;
+      }
+      transportRef.current = "mesh";
+      setTransport("mesh");
       stopLocalMedia();
 
       if (record && startedRef.current && !recordedRef.current) {
@@ -236,6 +248,7 @@ export function useMeeting() {
       try {
         const config = await fetchIceServers(args.serverUrl);
         if (config.ice_servers.length > 0) ice = config.ice_servers;
+        livekitUrlRef.current = config.livekit_url ?? null;
       } catch {
         // Fall back to the public STUN server.
       }
@@ -308,8 +321,73 @@ export function useMeeting() {
           ),
         );
 
-        for (const peer of message.peers) mesh.createPeer(peer.id, true, false);
         setPhase("live");
+        transportRef.current = "pending";
+
+        const startTransport = async () => {
+          const url = livekitUrlRef.current;
+          if (url && message.media_token) {
+            try {
+              const { LiveKitMedia: Sfu } = await import("./livekit");
+              const response = await fetch(`${httpBase(args.serverUrl)}/api/livekit/token`, {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({
+                  room: message.room,
+                  identity: message.self_id,
+                  media_token: message.media_token,
+                }),
+              });
+              if (!response.ok) throw new Error(`token ${response.status}`);
+              const grant = (await response.json()) as { url: string; token: string };
+              const sfu = new Sfu(grant.url, grant.token, {
+                onRemote: (identity, state) => {
+                  setRemotes((prev) => {
+                    const current = prev[identity];
+                    if (!current) return prev;
+                    return {
+                      ...prev,
+                      [identity]: {
+                        ...current,
+                        camStream: state.camStream,
+                        screenStream: state.screenStream,
+                        connection: state.connection,
+                      },
+                    };
+                  });
+                },
+                onLocalScreen: (stream) => {
+                  screenRef.current = stream;
+                  setScreenStream(stream);
+                  if (!stream && sharingRef.current) {
+                    setSharingState(false);
+                    signalRef.current?.state(
+                      micRef.current,
+                      camRef.current,
+                      false,
+                      handRef.current,
+                    );
+                  }
+                },
+                onError: (text) => setError(text),
+              });
+              await sfu.connect(stream);
+              sfuRef.current = sfu;
+              transportRef.current = "sfu";
+              setTransport("sfu");
+              return;
+            } catch {
+              // Fall through to the peer-to-peer mesh.
+            }
+          }
+          transportRef.current = "mesh";
+          setTransport("mesh");
+          for (const peer of Object.values(peersRef.current)) {
+            if (peer.id === message.self_id) continue;
+            mesh.createPeer(peer.id, true, false);
+          }
+        };
+        void startTransport();
       });
 
       signal.on("peer_joined", (message) => {
@@ -318,7 +396,7 @@ export function useMeeting() {
         peersRef.current = { ...peersRef.current, [peer.id]: peer };
         setParticipants((prev) => ({ ...prev, [peer.id]: peer }));
         upsertRemote(peer.id, { peer });
-        mesh.createPeer(peer.id, false, true);
+        if (transportRef.current === "mesh") mesh.createPeer(peer.id, false, true);
         void notify("Participant joined", `${peer.name} joined the meeting`);
       });
 
@@ -337,7 +415,7 @@ export function useMeeting() {
       });
 
       signal.on("signal", (message) => {
-        void mesh.handleSignal(message.from, message.data);
+        if (transportRef.current === "mesh") void mesh.handleSignal(message.from, message.data);
       });
 
       signal.on("chat", (message) => {
@@ -522,6 +600,24 @@ export function useMeeting() {
       setError("Screen sharing is not available in this webview on this platform.");
       return;
     }
+    if (transportRef.current === "sfu") {
+      try {
+        const started = await sfuRef.current?.startScreenShare();
+        if (!started) return;
+        setSharingState(true);
+        signalRef.current?.state(micRef.current, camRef.current, true, handRef.current);
+      } catch (err) {
+        if (
+          err instanceof DOMException &&
+          (err.name === "NotAllowedError" || err.name === "AbortError")
+        ) {
+          return;
+        }
+        setError("Could not start screen sharing.");
+      }
+      return;
+    }
+
     const video: MediaTrackConstraints = {
       frameRate: { ideal: 15, max: 30 },
       width: { max: 1920 },
@@ -580,6 +676,14 @@ export function useMeeting() {
   }, [setSharingState]);
 
   const stopShare = useCallback(() => {
+    if (transportRef.current === "sfu") {
+      void sfuRef.current?.stopScreenShare();
+      screenRef.current = null;
+      setScreenStream(null);
+      setSharingState(false);
+      signalRef.current?.state(micRef.current, camRef.current, false, handRef.current);
+      return;
+    }
     meshRef.current?.stopScreenShare();
     screenRef.current?.getTracks().forEach((track) => track.stop());
     screenRef.current = null;
@@ -618,6 +722,9 @@ export function useMeeting() {
       const track = await ensureTrack(kind, deviceId);
       if (!track) return;
       track.enabled = kind === "audio" ? micRef.current : camRef.current;
+      if (transportRef.current === "sfu") {
+        await sfuRef.current?.replaceTrack(kind, track);
+      }
     },
     [ensureTrack],
   );
@@ -629,6 +736,7 @@ export function useMeeting() {
     return () => {
       timersRef.current.forEach(clearTimeout);
       meshRef.current?.closeAll();
+      void sfuRef.current?.disconnect();
       localRef.current?.getTracks().forEach((track) => track.stop());
       screenRef.current?.getTracks().forEach((track) => track.stop());
       signalRef.current?.leave();
@@ -650,6 +758,7 @@ export function useMeeting() {
     camOn,
     sharing,
     handOn,
+    transport,
     localStream,
     screenStream,
     startedAt,

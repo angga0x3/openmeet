@@ -152,7 +152,33 @@ Neon notes:
   database is unreachable, the API degrades to `503` and clients fall back to local storage.
 - Check `GET /healthz`; it reports `"schedule": true|false`.
 
-## 3. TURN (NAT traversal)
+## 3. LiveKit SFU (optional but recommended)
+
+Media falls back to a peer-to-peer mesh when LiveKit is not configured. For rooms larger than
+6–8, create a LiveKit Cloud project (or self-host `livekit-server`) and add:
+
+```bash
+cat <<'EOF' | sudo tee -a /etc/openmeet/openmeet.env
+LIVEKIT_URL=wss://your-project.livekit.cloud
+LIVEKIT_API_KEY=APIxxxxxxxx
+LIVEKIT_API_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+EOF
+sudo systemctl restart openmeet-signaling
+```
+
+- The API secret stays on the server; browsers receive a short-lived JWT minted by
+  `POST /api/livekit/token`.
+- Tokens are only issued to a peer that already proved room membership (`media_token` from the
+  signaling `welcome`), so the endpoint cannot be used to mint tokens for arbitrary rooms.
+- `GET /healthz` reports `"livekit": true|false`; the room header shows `SFU` or `P2P`.
+- With SFU enabled you can raise `OPENMEET_MAX_PARTICIPANTS` (25 on the reference instance).
+- Self-hosting: point `LIVEKIT_URL` at your `wss://` endpoint and keep the same key/secret pair
+  that `livekit-server` uses.
+
+TURN is still useful for mesh fallback and for clients that cannot reach the SFU over UDP;
+configure both when possible.
+
+## 4. TURN (NAT traversal)
 
 Most home networks need a relay for at least some participants. coturn is free and packaged
 everywhere.
@@ -182,7 +208,7 @@ The signaling server mints short-lived TURN credentials (username = expiry, cred
 base64 HMAC-SHA1 of the secret). Nothing long-lived is shipped to clients, and the secret
 never leaves the server.
 
-## 4. Desktop distribution
+## 5. Desktop distribution
 
 ```bash
 cd apps/desktop
@@ -201,14 +227,14 @@ Set the signaling address before distributing, either by editing the default in
 For managed fleets, pre-seed `settings.json` in the app config directory
 (`~/.config/com.openmeet.desktop/settings.json` on Linux).
 
-## 5. Capacity
+## 6. Capacity
 
 The server keeps rooms in memory and forwards JSON messages. Each participant sends SDP/ICE
 only at join and on renegotiation; chat is rate limited per peer. A single core handles
 thousands of idle rooms. The real limit is mesh bandwidth on the clients: plan for ≤ 6
 participants per room until the SFU transport lands (see `docs/ARCHITECTURE.md`).
 
-## 6. Operations
+## 7. Operations
 
 - Health: `curl -fsS https://meet.example/healthz`
 - Logs: structured `tracing` output on stdout; set `RUST_LOG=debug` while diagnosing.

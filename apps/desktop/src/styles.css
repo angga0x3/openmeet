@@ -2207,6 +2207,15 @@ svg {
   font-weight: 500;
 }
 
+.transport-pill {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--accent-l);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  background: var(--accent-soft);
+}
+
 .rec-pill {
   display: inline-flex;
   align-items: center;

@@ -197,6 +197,7 @@ export async function fetchIceServers(serverUrl: string): Promise<IceServerFallb
 type IceServerFallback = {
   ice_servers: Array<{ urls: string[]; username?: string; credential?: string }>;
   max_participants: number;
+  livekit_url?: string | null;
 };
 
 export async function createRoom(serverUrl: string, passcode?: string, id?: string): Promise<string> {

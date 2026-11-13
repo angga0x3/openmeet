@@ -11,6 +11,7 @@ use sha1::Sha1;
 use sha2::{Digest, Sha256};
 use tokio::sync::mpsc;
 
+use crate::livekit::{access_token, LiveKitConfig};
 use crate::protocol::{IceServer, Peer, ServerMsg};
 use crate::schedule::{ScheduleEntry, ScheduleStore};
 
@@ -34,6 +35,7 @@ pub struct Config {
     pub max_participants: usize,
     /// Empty rooms are collected after this long.
     pub room_idle: Duration,
+    pub livekit: Option<LiveKitConfig>,
 }
 
 impl Default for Config {
@@ -47,6 +49,7 @@ impl Default for Config {
             turn: None,
             max_participants: 8,
             room_idle: Duration::from_secs(600),
+            livekit: None,
         }
     }
 }
@@ -96,6 +99,7 @@ pub struct Joined {
     pub peers: Vec<Peer>,
     pub is_host: bool,
     pub ice_servers: Vec<IceServer>,
+    pub media_token: String,
 }
 
 pub struct ChatOut {
@@ -169,6 +173,7 @@ struct PeerEntry {
     tx: mpsc::UnboundedSender<ServerMsg>,
     window_start: Instant,
     window_count: u32,
+    media_token: String,
 }
 
 struct Room {
@@ -303,6 +308,7 @@ impl Hub {
             sharing: false,
             hand: false,
         };
+        let media_token = uuid::Uuid::new_v4().to_string();
         room.peers.insert(
             id.clone(),
             PeerEntry {
@@ -310,6 +316,7 @@ impl Hub {
                 tx,
                 window_start: Instant::now(),
                 window_count: 0,
+                media_token: media_token.clone(),
             },
         );
         room.empty_since = None;
@@ -331,6 +338,7 @@ impl Hub {
             peers,
             is_host,
             ice_servers: self.ice_servers(),
+            media_token,
         })
     }
 
@@ -424,6 +432,21 @@ impl Hub {
             }
         }
         Err("Could not allocate a room code.".into())
+    }
+
+    pub fn livekit_url(&self) -> Option<String> {
+        self.cfg.livekit.as_ref().map(|config| config.url.clone())
+    }
+
+    /// Mints a LiveKit token only for a peer that proved room membership.
+    pub fn livekit_token(&self, room: &str, peer_id: &str, token: &str) -> Option<String> {
+        let config = self.cfg.livekit.as_ref()?;
+        let rooms = self.inner.lock().expect("hub poisoned");
+        let entry = rooms.get(room)?.peers.get(peer_id)?;
+        if !constant_time_eq(entry.media_token.as_bytes(), token.as_bytes()) {
+            return None;
+        }
+        access_token(config, room, peer_id, &entry.peer.name).ok()
     }
 
     pub fn peer(&self, room_id: &str, peer_id: &str) -> Option<Peer> {
@@ -782,6 +805,30 @@ mod tests {
             .await
             .unwrap_err()
             .contains("not configured"));
+    }
+
+    #[test]
+    fn livekit_tokens_require_room_membership() {
+        let hub = Hub::new(
+            Config {
+                livekit: Some(LiveKitConfig {
+                    url: "wss://example.livekit.cloud".into(),
+                    api_key: "key".into(),
+                    api_secret: "secret".into(),
+                    ttl: Duration::from_secs(600),
+                }),
+                ..Config::default()
+            },
+            None,
+        );
+        let room = hub.create_room(None);
+        let joined = hub
+            .join(&room, "Ada", None, false, true, sender())
+            .unwrap();
+        assert!(hub.livekit_token(&room, &joined.me.id, "wrong-token").is_none());
+        assert!(hub
+            .livekit_token(&room, &joined.me.id, &joined.media_token)
+            .is_some());
     }
 
     #[test]

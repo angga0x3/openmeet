@@ -39,6 +39,7 @@ pub fn router(hub: AppState, web_dir: Option<PathBuf>) -> Router {
         .route("/api/rooms/{id}", get(room_info))
         .route("/api/schedule", get(schedule_list).post(schedule_create))
         .route("/api/schedule/{id}", delete(schedule_delete))
+        .route("/api/livekit/token", post(livekit_token))
         .route("/ws", get(ws_handler));
 
     if let Some(dir) = web_dir {
@@ -71,6 +72,7 @@ async fn healthz(State(hub): State<AppState>) -> impl IntoResponse {
     Json(serde_json::json!({
         "ok": true,
         "schedule": hub.schedule_configured(),
+        "livekit": hub.livekit_url().is_some(),
     }))
 }
 
@@ -78,12 +80,14 @@ async fn healthz(State(hub): State<AppState>) -> impl IntoResponse {
 struct PublicConfig {
     ice_servers: Vec<IceServer>,
     max_participants: usize,
+    livekit_url: Option<String>,
 }
 
 async fn config(State(hub): State<AppState>) -> impl IntoResponse {
     Json(PublicConfig {
         ice_servers: hub.ice_servers(),
         max_participants: hub.config().max_participants,
+        livekit_url: hub.livekit_url(),
     })
 }
 
@@ -258,6 +262,40 @@ async fn schedule_delete(
     }
 }
 
+#[derive(Deserialize)]
+struct MediaTokenReq {
+    room: String,
+    identity: String,
+    media_token: String,
+}
+
+#[derive(Serialize)]
+struct MediaTokenRes {
+    url: String,
+    token: String,
+}
+
+async fn livekit_token(
+    State(hub): State<AppState>,
+    Json(req): Json<MediaTokenReq>,
+) -> Response {
+    let Some(url) = hub.livekit_url() else {
+        return api_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "livekit_unavailable",
+            "This server has no LiveKit deployment configured.",
+        );
+    };
+    match hub.livekit_token(&req.room, &req.identity, &req.media_token) {
+        Some(token) => Json(MediaTokenRes { url, token }).into_response(),
+        None => api_error(
+            StatusCode::UNAUTHORIZED,
+            "invalid_media_token",
+            "Join the room before requesting a media token.",
+        ),
+    }
+}
+
 #[derive(Serialize)]
 struct RoomView {
     room_id: String,
@@ -332,12 +370,14 @@ async fn client_loop(socket: WebSocket, hub: AppState) {
         }) => match hub.join(&room, &name, passcode.as_deref(), mic, cam, tx.clone()) {
             Ok(joined) => {
                 let peer_id = joined.me.id.clone();
+                let media_token = joined.media_token.clone();
                 let _ = tx.send(ServerMsg::Welcome {
                     self_id: peer_id.clone(),
                     room: room.clone(),
                     peers: joined.peers,
                     ice_servers: joined.ice_servers,
                     is_host: joined.is_host,
+                    media_token,
                 });
                 hub.broadcast(
                     &room,

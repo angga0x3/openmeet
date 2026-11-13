@@ -41,6 +41,7 @@ export type ServerMsg =
       peers: Peer[];
       ice_servers: IceServer[];
       is_host: boolean;
+      media_token?: string;
     }
   | { type: "peer_joined"; peer: Peer }
   | { type: "peer_left"; peer_id: string }

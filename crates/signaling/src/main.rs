@@ -2,6 +2,7 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use openmeet_signaling::{
     http::router,
+    livekit::LiveKitConfig,
     protocol::IceServer,
     room::{Config, Hub, TurnConfig},
     schedule::ScheduleStore,
@@ -67,6 +68,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         _ => None,
     };
 
+    let livekit = match (
+        std::env::var("LIVEKIT_URL"),
+        std::env::var("LIVEKIT_API_KEY"),
+        std::env::var("LIVEKIT_API_SECRET"),
+    ) {
+        (Ok(url), Ok(api_key), Ok(api_secret))
+            if !url.trim().is_empty()
+                && !api_key.trim().is_empty()
+                && !api_secret.trim().is_empty() =>
+        {
+            tracing::info!(url = %url.trim(), "LiveKit SFU configured");
+            Some(LiveKitConfig {
+                url: url.trim().to_string(),
+                api_key: api_key.trim().to_string(),
+                api_secret: api_secret.trim().to_string(),
+                ttl: Duration::from_secs(6 * 3600),
+            })
+        }
+        _ => {
+            tracing::warn!("LiveKit is not configured; media falls back to the peer-to-peer mesh");
+            None
+        }
+    };
+
     let cfg = Config {
         ice_servers: vec![IceServer {
             urls: ice_urls,
@@ -76,6 +101,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         turn,
         max_participants,
         room_idle,
+        livekit,
     };
 
     let schedule = match std::env::var("DATABASE_URL") {
