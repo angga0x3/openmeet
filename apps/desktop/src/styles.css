@@ -2629,6 +2629,23 @@ svg {
   display: flex;
 }
 
+.tb-more {
+  display: none;
+}
+
+.more-pop {
+  bottom: calc(100% + 10px);
+  right: 0;
+  min-width: 210px;
+}
+
+.rt-id .mono {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
 .device-pop {
   bottom: calc(100% + 10px);
   left: 0;
@@ -3047,7 +3064,8 @@ svg {
 
 .modal {
   width: 100%;
-  max-width: 480px;
+  min-width: 0;
+  max-width: min(480px, calc(100vw - 32px));
   background: var(--surface);
   border: 1px solid var(--border-2);
   border-radius: 18px;
@@ -3058,11 +3076,11 @@ svg {
 }
 
 .modal.wide {
-  max-width: 540px;
+  max-width: min(540px, calc(100vw - 32px));
 }
 
 .modal.narrow {
-  max-width: 400px;
+  max-width: min(400px, calc(100vw - 32px));
 }
 
 @keyframes modalIn {
@@ -3078,6 +3096,15 @@ svg {
   justify-content: space-between;
   gap: 12px;
   padding: 20px 20px 0;
+  min-width: 0;
+}
+
+.modal-head > div {
+  min-width: 0;
+}
+
+.modal-head p {
+  overflow-wrap: anywhere;
 }
 
 .modal-head h2 {
@@ -3399,6 +3426,12 @@ svg {
     gap: 8px;
     padding: 14px;
   }
+  .backdrop {
+    padding: 12px;
+  }
+  .modal {
+    max-width: calc(100vw - 24px);
+  }
   .join-top {
     padding: 0 14px;
   }
@@ -3469,6 +3502,38 @@ svg {
   .tb-badge {
     right: 4px;
     top: 2px;
+  }
+  .tb-share,
+  .tb-record {
+    display: none;
+  }
+  .tb-more {
+    display: flex;
+  }
+  .tb {
+    min-width: 40px;
+  }
+  .tb-group .tb {
+    min-width: 36px;
+  }
+  .tb-caret {
+    width: 14px;
+  }
+  .tb-sep {
+    display: none;
+  }
+  .tb-leave {
+    flex-shrink: 0;
+    margin-left: 4px;
+  }
+  .rt-id .mono {
+    max-width: 76px;
+  }
+  .secure {
+    display: none;
+  }
+  .rt-sep {
+    display: none;
   }
   .split,
   .share-stage {

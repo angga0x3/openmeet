@@ -412,6 +412,7 @@ export function RoomView({ meeting, room, title, schedule, onExit, onCopy, pushT
   const [reactionMenu, setReactionMenu] = useState(false);
   const [deviceMenu, setDeviceMenu] = useState<"mic" | "cam" | null>(null);
   const [layoutMenu, setLayoutMenu] = useState(false);
+  const [moreMenu, setMoreMenu] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [unread, setUnread] = useState(0);
   const [now, setNow] = useState(Date.now());
@@ -447,6 +448,7 @@ export function RoomView({ meeting, room, title, schedule, onExit, onCopy, pushT
       if (!target.closest(".tb-menu-wrap")) {
         setDeviceMenu(null);
         setLayoutMenu(false);
+        setMoreMenu(false);
       }
       if (!target.closest(".reaction-wrap")) setReactionMenu(false);
     }
@@ -687,7 +689,7 @@ export function RoomView({ meeting, room, title, schedule, onExit, onCopy, pushT
             </span>
           )}
           <div className="tb-menu-wrap">
-            <button className={`pill layout-pill ${layoutMenu ? "active" : ""}`} onClick={() => setLayoutMenu((value) => !value)}>
+            <button className={`pill layout-pill hide-sm ${layoutMenu ? "active" : ""}`} onClick={() => setLayoutMenu((value) => !value)}>
               <Icon name="layout-grid" size={14} />
               <span className="pill-label">Layout</span>
             </button>
@@ -706,7 +708,7 @@ export function RoomView({ meeting, room, title, schedule, onExit, onCopy, pushT
             )}
           </div>
           <button
-            className="icon-btn"
+            className="icon-btn hide-sm"
             title="Fullscreen"
             onClick={() => {
               if (document.fullscreenElement) void document.exitFullscreen();
@@ -830,7 +832,11 @@ export function RoomView({ meeting, room, title, schedule, onExit, onCopy, pushT
             </div>
 
             <span className="tb-sep" />
-            <button className={`tb ${meeting.sharing ? "active" : ""}`} onClick={() => (meeting.sharing ? meeting.stopShare() : void meeting.startShare())} title="Share screen">
+            <button
+              className={`tb tb-share ${meeting.sharing ? "active" : ""}`}
+              onClick={() => (meeting.sharing ? meeting.stopShare() : void meeting.startShare())}
+              title="Share screen"
+            >
               <Icon name="monitor-up" size={20} />
               <span className="tb-label">{meeting.sharing ? "Stop share" : "Share"}</span>
             </button>
@@ -845,7 +851,7 @@ export function RoomView({ meeting, room, title, schedule, onExit, onCopy, pushT
               {unread > 0 && <span className="tb-badge">{unread}</span>}
             </button>
             <button
-              className={`tb ${recording ? "rec-on active" : ""}`}
+              className={`tb tb-record ${recording ? "rec-on active" : ""}`}
               onClick={() => (recording ? stopRecording() : startRecording())}
               title={recording ? "Stop recording" : "Record locally"}
             >
@@ -880,6 +886,62 @@ export function RoomView({ meeting, room, title, schedule, onExit, onCopy, pushT
                   >
                     <Icon name="hand" size={16} />
                     <span>{meeting.handOn ? "Lower hand" : "Raise hand"}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="tb-menu-wrap">
+              <button
+                className={`tb tb-more ${moreMenu ? "active" : ""}`}
+                onClick={() => setMoreMenu((value) => !value)}
+                title="More"
+              >
+                <Icon name="ellipsis" size={20} />
+                <span className="tb-label">More</span>
+              </button>
+              {moreMenu && (
+                <div className="popover more-pop">
+                  <button
+                    className="pop-row"
+                    onClick={() => {
+                      setMoreMenu(false);
+                      meeting.sharing ? meeting.stopShare() : void meeting.startShare();
+                    }}
+                  >
+                    <Icon name={meeting.sharing ? "monitor" : "monitor-up"} size={15} />
+                    <span className="grow">{meeting.sharing ? "Stop sharing" : "Share screen"}</span>
+                  </button>
+                  <button
+                    className="pop-row"
+                    onClick={() => {
+                      setMoreMenu(false);
+                      recording ? stopRecording() : startRecording();
+                    }}
+                  >
+                    <Icon name="circle-dot" size={15} />
+                    <span className="grow">{recording ? "Stop recording" : "Record locally"}</span>
+                  </button>
+                  <button
+                    className="pop-row"
+                    onClick={() => {
+                      setMoreMenu(false);
+                      meeting.toggleHand();
+                    }}
+                  >
+                    <Icon name="hand" size={15} />
+                    <span className="grow">{meeting.handOn ? "Lower hand" : "Raise hand"}</span>
+                  </button>
+                  <button
+                    className="pop-row"
+                    onClick={() => {
+                      setMoreMenu(false);
+                      setLayout(layout === "grid" ? "speaker" : "grid");
+                    }}
+                  >
+                    <Icon name="layout-grid" size={15} />
+                    <span className="grow">
+                      {layout === "grid" ? "Speaker view" : "Gallery view"}
+                    </span>
                   </button>
                 </div>
               )}
