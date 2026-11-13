@@ -40,7 +40,7 @@ impl ScheduleStore {
                 owner TEXT NOT NULL,
                 title TEXT NOT NULL,
                 start_ms BIGINT NOT NULL,
-                duration_min INTEGER NOT NULL,
+                duration_min BIGINT NOT NULL,
                 room TEXT NOT NULL,
                 color TEXT NOT NULL,
                 created_ms BIGINT NOT NULL
@@ -51,6 +51,11 @@ impl ScheduleStore {
         sqlx::query(
             "CREATE INDEX IF NOT EXISTS openmeet_schedule_owner
              ON openmeet_schedule (owner, start_ms)",
+        )
+        .execute(&self.pool)
+        .await?;
+        sqlx::query(
+            "ALTER TABLE openmeet_schedule ALTER COLUMN duration_min TYPE BIGINT",
         )
         .execute(&self.pool)
         .await?;

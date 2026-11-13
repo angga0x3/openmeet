@@ -41,7 +41,10 @@ export function loadPrefs(): Prefs {
   };
   try {
     const raw = localStorage.getItem(KEY);
-    if (!raw) return fallback;
+    if (!raw) {
+      savePrefs(fallback);
+      return fallback;
+    }
     const parsed = JSON.parse(raw) as Partial<Prefs>;
     const merged = {
       ...fallback,
@@ -49,8 +52,11 @@ export function loadPrefs(): Prefs {
       notifications: { ...fallback.notifications, ...(parsed.notifications ?? {}) },
     };
     if (!merged.scheduleKey) merged.scheduleKey = newKey();
+    // Persist migrations/defaults so the schedule key is stable across reloads.
+    savePrefs(merged);
     return merged;
   } catch {
+    savePrefs(fallback);
     return fallback;
   }
 }
