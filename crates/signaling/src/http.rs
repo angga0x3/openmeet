@@ -3,8 +3,9 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
-        Path, State,
+        Path, Request, State,
     },
+    middleware::{self, Next},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::{delete, get, post},
@@ -47,7 +48,8 @@ pub fn router(hub: AppState, web_dir: Option<PathBuf>) -> Router {
         app = app.fallback_service(ServeDir::new(dir).not_found_service(ServeFile::new(index)));
     }
 
-    app.layer(CorsLayer::permissive())
+    app.layer(middleware::from_fn(cache_control))
+        .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .layer(SetResponseHeaderLayer::overriding(
             header::CONTENT_SECURITY_POLICY,
@@ -66,6 +68,20 @@ pub fn router(hub: AppState, web_dir: Option<PathBuf>) -> Router {
             HeaderValue::from_static("camera=(self), microphone=(self), display-capture=(self)"),
         ))
         .with_state(hub)
+}
+
+async fn cache_control(request: Request, next: Next) -> Response {
+    let path = request.uri().path().to_string();
+    let mut response = next.run(request).await;
+    let value = if path.starts_with("/assets/") || path.starts_with("/fonts/") {
+        "public, max-age=31536000, immutable"
+    } else {
+        "no-cache"
+    };
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static(value));
+    response
 }
 
 async fn healthz(State(hub): State<AppState>) -> impl IntoResponse {

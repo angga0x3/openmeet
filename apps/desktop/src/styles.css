@@ -2127,7 +2127,8 @@ svg {
 }
 
 .room-top {
-  height: 58px;
+  height: calc(58px + env(safe-area-inset-top));
+  padding-top: env(safe-area-inset-top);
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -2254,7 +2255,7 @@ svg {
   min-height: 0;
   display: flex;
   gap: 12px;
-  padding: 0 12px 12px;
+  padding: 0 12px calc(12px + env(safe-area-inset-bottom));
 }
 
 .stage {
@@ -2505,12 +2506,12 @@ svg {
 .toolbar {
   position: absolute;
   left: 50%;
-  bottom: 10px;
+  bottom: calc(10px + env(safe-area-inset-bottom));
   transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 6px;
+  padding: 6px 74px 6px 6px;
   background: rgba(22, 22, 27, 0.84);
   backdrop-filter: blur(20px) saturate(1.4);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -2606,6 +2607,10 @@ svg {
 }
 
 .tb-leave {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
   height: 42px;
   padding: 0 16px;
   border-radius: 11px;
@@ -2616,8 +2621,9 @@ svg {
   gap: 8px;
   font-weight: 600;
   font-size: 13px;
-  margin: 0 2px;
+  margin: 0;
   transition: background 0.15s;
+  z-index: 7;
 }
 
 .tb-leave:hover {
@@ -3492,9 +3498,13 @@ svg {
   .tb-sep {
     margin: 0 3px;
   }
+  .toolbar {
+    padding-right: 62px;
+  }
   .tb-leave {
     height: 40px;
     padding: 0 12px;
+    right: 6px;
   }
   .tb-leave span {
     display: none;
@@ -3524,7 +3534,6 @@ svg {
   }
   .tb-leave {
     flex-shrink: 0;
-    margin-left: 4px;
   }
   .rt-id .mono {
     max-width: 76px;
@@ -3561,6 +3570,12 @@ svg {
   }
   .reaction-layer {
     bottom: 76px;
+  }
+}
+
+@media (max-width: 380px) {
+  .tb-react {
+    display: none;
   }
 }
 
