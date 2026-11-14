@@ -8,22 +8,8 @@ on:
 
 jobs:
   build:
-    name: ${{ matrix.platform }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: ubuntu-24.04
-            args: "--bundles deb,rpm"
-            experimental: false
-          - platform: windows-latest
-            args: ""
-            experimental: false
-          - platform: macos-13
-            args: ""
-            experimental: true
-    runs-on: ${{ matrix.platform }}
-    continue-on-error: ${{ matrix.experimental }}
+    name: windows
+    runs-on: windows-latest
     permissions:
       contents: read
     steps:
@@ -37,31 +23,21 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Linux dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
-            librsvg2-dev libxdo-dev libssl-dev libsoup-3.0-dev
-
       - name: Frontend dependencies
         working-directory: apps/desktop
         run: npm ci
 
-      - name: Build bundles
+      - name: Build installers
         working-directory: apps/desktop
-        run: npm run tauri build -- ${{ matrix.args }}
+        run: npm run tauri build
 
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
-          name: openmeet-${{ matrix.platform }}
+          name: openmeet-windows
           if-no-files-found: error
           retention-days: 14
-          path: |
-            apps/desktop/src-tauri/target/release/bundle/**
-            apps/desktop/src-tauri/target/*/release/bundle/**
+          path: apps/desktop/src-tauri/target/release/bundle/**
 
   release:
     name: attach to release
