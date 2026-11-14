@@ -86,7 +86,7 @@ npm run tauri build
 Artifacts land in `apps/desktop/src-tauri/target/release/bundle/`.
 
 CI builds installers for **Windows** (`.msi`/`.exe`), **macOS** (`.dmg`) and **Linux**
-(`.deb`/`.rpm`/`.AppImage`) on every tag or manual run of the `build` workflow; download them
+(`.deb`/`.rpm`) on every tag or manual run of the `build` workflow; download them
 from the Actions run, or from the release page when a `v*` tag is pushed. Desktop builds are
 unsigned, so Windows SmartScreen and macOS Gatekeeper will warn on first launch.
 
