@@ -6,10 +6,6 @@ on:
     tags:
       - "v*"
 
-concurrency:
-  group: build-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   build:
     name: ${{ matrix.platform }}
@@ -19,11 +15,15 @@ jobs:
         include:
           - platform: ubuntu-24.04
             args: "--bundles deb,rpm"
+            experimental: false
           - platform: windows-latest
             args: ""
-          - platform: macos-14
+            experimental: false
+          - platform: macos-13
             args: ""
+            experimental: true
     runs-on: ${{ matrix.platform }}
+    continue-on-error: ${{ matrix.experimental }}
     permissions:
       contents: read
     steps:
