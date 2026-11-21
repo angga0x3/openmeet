@@ -14,19 +14,21 @@ pub struct Settings {
     pub start_muted: bool,
     pub start_video_off: bool,
     pub noise_suppression: bool,
+    pub server_url_custom: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
             display_name: String::new(),
-            server_url: "ws://127.0.0.1:8770".to_string(),
+            server_url: "wss://openmeet.garox.my.id".to_string(),
             camera_id: String::new(),
             mic_id: String::new(),
             speaker_id: String::new(),
             start_muted: false,
             start_video_off: false,
             noise_suppression: true,
+            server_url_custom: false,
         }
     }
 }

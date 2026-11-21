@@ -62,6 +62,7 @@ export type Settings = {
   startMuted: boolean;
   startVideoOff: boolean;
   noiseSuppression: boolean;
+  serverUrlCustom?: boolean;
 };
 
 export type HistoryEntry = {

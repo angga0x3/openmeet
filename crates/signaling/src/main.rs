@@ -17,9 +17,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .init();
 
-    let bind: SocketAddr = std::env::var("OPENMEET_BIND")
-        .unwrap_or_else(|_| "0.0.0.0:8770".to_string())
-        .parse()?;
+    // Render (and most PaaS) injects PORT; fall back to OPENMEET_BIND for VPS/systemd.
+    let bind_value = std::env::var("PORT")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .map(|port| format!("0.0.0.0:{port}"))
+        .or_else(|| std::env::var("OPENMEET_BIND").ok())
+        .unwrap_or_else(|| "0.0.0.0:8770".to_string());
+    let bind: SocketAddr = bind_value.parse()?;
 
     let ice_urls: Vec<String> = std::env::var("OPENMEET_ICE")
         .unwrap_or_else(|_| "stun:stun.l.google.com:19302".to_string())

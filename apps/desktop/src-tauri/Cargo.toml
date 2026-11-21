@@ -1,6 +1,6 @@
 [package]
 name = "openmeet"
-version = "0.1.0"
+version = "0.1.1"
 description = "Free, self-hosted meetings for the desktop"
 edition = "2021"
 rust-version = "1.85"

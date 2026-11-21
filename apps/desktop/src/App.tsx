@@ -171,7 +171,11 @@ export default function App() {
 
   const updateSettings = useCallback((patch: Partial<Settings>) => {
     setSettings((current) => {
-      const next = { ...current, ...patch };
+      const next = {
+        ...current,
+        ...patch,
+        ...(patch.serverUrl !== undefined ? { serverUrlCustom: true } : {}),
+      };
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => void saveSettings(next), 350);
       return next;

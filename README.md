@@ -7,6 +7,9 @@ with Zoom's proprietary protocol or services.
 
 Try it: <https://openmeet.garox.my.id> (browser, no install) or build the desktop app below.
 
+Backend can run on Render (Blueprint + Docker are in the repo): see
+[docs/DEPLOYMENT-RENDER.md](docs/DEPLOYMENT-RENDER.md).
+
 ![Home dashboard](docs/screenshots/home-light.png)
 
 ## What works today (v0)
@@ -126,6 +129,9 @@ deploy/coturn         TURN server (coturn) for self-hosting
 docs/ARCHITECTURE.md  design, Zoom-parity analysis, security model, roadmap
 docs/PROTOCOL.md      signaling wire protocol
 docs/DEPLOYMENT.md    TLS, systemd, coturn, distribution
+docs/DEPLOYMENT-RENDER.md  Render Blueprint, custom domain, caveats
+render.yaml           Render blueprint (Docker web service)
+Dockerfile            multi-stage build (web + Rust signaling)
 ```
 
 ## Security

@@ -6,17 +6,26 @@ export const isTauri =
 const SETTINGS_KEY = "openmeet.settings.v1";
 const HISTORY_KEY = "openmeet.history.v1";
 
+export const HOSTED_SERVER_URL = "wss://openmeet.garox.my.id";
+
 /**
- * Browser deployments talk to the same origin they were served from; the packaged
- * desktop app has no meaningful origin, so it falls back to the hosted instance.
+ * Browser deployments talk to the same origin they were served from. The packaged
+ * desktop app is served from `tauri.localhost` (Windows) or `tauri://localhost`,
+ * which is not a signaling origin, so it uses the hosted instance unless the user
+ * configured something else.
  */
-function resolveDefaultServerUrl(): string {
-  if (typeof window !== "undefined" && /^https?:$/.test(window.location.protocol)) {
-    const { host, port } = window.location;
-    if (port === "5173" || port === "4173") return "ws://127.0.0.1:8770";
-    return `${window.location.protocol === "https:" ? "wss" : "ws"}://${host}`;
+export function resolveDefaultServerUrl(): string {
+  if (typeof window === "undefined") return HOSTED_SERVER_URL;
+  const { protocol, hostname, port, host } = window.location;
+  if (protocol === "tauri:") return HOSTED_SERVER_URL;
+  if (hostname === "tauri.localhost" || hostname.endsWith(".tauri.localhost")) {
+    return HOSTED_SERVER_URL;
   }
-  return "wss://openmeet.garox.my.id";
+  if (protocol === "http:" || protocol === "https:") {
+    if (port === "5173" || port === "4173") return "ws://127.0.0.1:8770";
+    return `${protocol === "https:" ? "wss" : "ws"}://${host}`;
+  }
+  return HOSTED_SERVER_URL;
 }
 
 export function inviteLink(code: string): string {
@@ -63,12 +72,25 @@ export async function loadSettings(): Promise<Settings> {
     try {
       const { invoke } = await import("@tauri-apps/api/core");
       const saved = await invoke<Partial<Settings>>("load_settings");
-      return { ...defaultSettings, ...saved };
+      return {
+        ...defaultSettings,
+        ...saved,
+        serverUrl:
+          saved.serverUrlCustom && saved.serverUrl
+            ? saved.serverUrl
+            : resolveDefaultServerUrl(),
+      };
     } catch {
       return { ...defaultSettings };
     }
   }
-  return { ...defaultSettings, ...(readLocal<Partial<Settings>>(SETTINGS_KEY) ?? {}) };
+  const saved = readLocal<Partial<Settings>>(SETTINGS_KEY) ?? {};
+  return {
+    ...defaultSettings,
+    ...saved,
+    serverUrl:
+      saved.serverUrlCustom && saved.serverUrl ? saved.serverUrl : resolveDefaultServerUrl(),
+  };
 }
 
 export async function saveSettings(settings: Settings): Promise<void> {

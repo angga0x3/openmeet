@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: openmeet
+    runtime: docker
+    plan: free
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: OPENMEET_WEB_DIR
+        value: /app/web
+      - key: OPENMEET_MAX_PARTICIPANTS
+        value: "25"
+      # Set these in the Render dashboard (Blueprint prompts for them).
+      - key: DATABASE_URL
+        sync: false
+      - key: LIVEKIT_URL
+        sync: false
+      - key: LIVEKIT_API_KEY
+        sync: false
+      - key: LIVEKIT_API_SECRET
+        sync: false
+      # Optional: extra STUN/TURN for the mesh fallback.
+      # - key: OPENMEET_ICE
+      #   sync: false

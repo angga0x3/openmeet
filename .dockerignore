@@ -1,0 +1,11 @@
+target/
+**/target/
+**/node_modules/
+**/dist/
+**/gen/
+.git/
+.github/
+*.db
+*.log
+docs/screenshots/
+deploy/
